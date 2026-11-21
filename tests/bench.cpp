@@ -1,7 +1,8 @@
 // Nexus's cost: renders through the CLAP entry for SECONDS at 48 kHz in 128-frame blocks, as Melodee plays it.
 // tools/bench.sh runs it under callgrind for instruction counts (exact and repeatable, unlike timings on a computer
 // that is not the MPC).
-//   bench [worst|pad|typical|silent|paint] [SECONDS]      (NEXUS_BENCH_RATE=44100 for another host rate)
+//   bench [worst|pad|typical|silent|paint|model:N] [SECONDS]   (NEXUS_BENCH_RATE=44100 for another host rate)
+// model:N: eight voices (eight keys) of model N, Gate, as a measure of each model's cost.
 // worst: eight voices of the heaviest model (6-op FM, unison 8 on one note), every modulator routed, the filter
 // resonant; pad: the Wavetable Pad preset, a four-note chord; typical: the Saw Lead preset playing a line; silent: no
 // notes; paint: the PLAITS page painted 25 times a second while the pad plays.
@@ -41,6 +42,16 @@ int main (int argc, char** argv)
         for (int s = 0; s < 4; ++s) for (int t = 0; t < 4; ++t) param (route (s, t), 0.2), param (assign (s, t), 0.2);
         param (lfo1PerVoice, 1), param (lfo2PerVoice, 1);
         note (first, 0, 0x90, 48, 110);
+    }
+    if (mode.rfind ("model:", 0) == 0)
+    {
+        param (model, std::atoi (mode.c_str() + 6)), param (notes, 8);
+        for (int k : { 36, 43, 48, 52, 55, 60, 64, 67 }) note (first, 0, 0x90, (uint8_t) k, 100);
+    }
+    if (mode.rfind ("model:", 0) == 0)
+    {
+        param (model, std::atoi (mode.c_str() + 6)), param (notes, 8);
+        for (int k : { 36, 43, 48, 52, 55, 60, 64, 67 }) note (first, 0, 0x90, (uint8_t) k, 100);
     }
     if (mode == "pad" || mode == "paint")
         for (int k : { 60, 64, 67, 71 }) note (first, 0, 0x90, (uint8_t) k, 100);

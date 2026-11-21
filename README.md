@@ -154,6 +154,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh               # build/Nexus.clap, then the tests and the fingerprint
     ./build.sh sanitize      # the host tests against an AddressSanitizer + UBSan build
     tools/bench.sh           # instructions a block (callgrind): worst, pad, typical, silent, a page frame
+                             # (build/bench model:N measures eight voices of model N)
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
@@ -183,6 +184,9 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
 | Pad: the Wavetable Pad, four notes | 240,100 |
 | Typical: the Saw Lead playing a line | 116,000 |
 | Silent | 9,700 |
+
+Eight voices of one model (eight keys held, `bench model:N`) cost from about 212,000 instructions a block (Chiptune,
+Speech: 4.4 % of a core) to 650,000 (Particle: 13.5 %); most models sit between 7 and 12 %.
 
 At other host rates the resampler adds a little: the pad costs 97 million instructions a second at 44.1 kHz (Melodee's
 default) against 90 million at 48 kHz, where samples pass as they are. Silent, the resampler skips its work.
