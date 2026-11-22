@@ -289,7 +289,14 @@ public:
         reset();
         prepared = true;
     }
-    void deactivate() { prepared = false; }
+    // [main thread] Events still queued are dropped: the plug-in's own copy of the values holds them, and it sets them
+    // all again before the next prepare().
+    void deactivate()
+    {
+        prepared = false;
+        head = tail = 0;
+        lastStamp = 0;
+    }
 
     void reset()
     {
@@ -300,7 +307,7 @@ public:
         for (auto& v : voices)
         {
             v.plaits.Silence();
-            v.active = v.gate = v.sustained = v.releaseDue = false;
+            v.active = v.gate = v.sustained = v.releaseDue = v.fading = false;
             v.env1 = Adsr {}, v.env2 = Adsr {};
             v.filter.clear();
             v.key = -1;
@@ -366,7 +373,14 @@ public:
     }
 
     // Nothing sounds, nothing waits: the host may let the plug-in sleep.
-    bool quiet() const { return head == tail && (long) quietBlocks * block > resampler.width() + 4 * block; }
+    bool quiet() const
+    {
+        if ((long) quietBlocks * block <= resampler.width() + 4 * block) return false;
+        // The transport's updates may wait (they are taken in order when the host calls again); anything else may not.
+        for (uint32_t i = head; i != tail; i = (i + 1) % queueSize)
+            if (events[i].type != Ev::clock) return false;
+        return true;
+    }
     uint32_t hostRate() const { return hostHz; }
     float valueOf (uint32_t id) const { return value[id]; }
 
@@ -390,7 +404,7 @@ private:
         bool active = false, gate = false, sustained = false;
         // A key let go before the voice has played a block plays that block first (a note shorter than 0.25 ms still
         // strikes); `rendered`: it has played one since it started.
-        bool releaseDue = false, rendered = false, filterOpen = true;
+        bool releaseDue = false, rendered = false, filterOpen = true, fading = false;
         float lastIn = 0.0f; // the filter's last input, to take it up again from where the sound is
         int key = -1;
         uint32_t note = 0, age = 0; // the note it plays (voices of one note share it), when it started
@@ -486,6 +500,7 @@ private:
         vc.glide = coef;
         vc.silent = 0;
         vc.releaseDue = false;
+        vc.fading = false;
         if (! retrigger) return;
         vc.rendered = false;
         vc.age = ++ages;
@@ -533,6 +548,7 @@ private:
         uint32_t seen[maxVoices];
         int count = 0;
         uint32_t heldAge = 0, pedalAge = 0, heldNote = 0, pedalNote = 0;
+        bool anyHeld = false, anyPedal = false; // (a voice let go for a new note has age 0)
         for (const auto& vc : voices)
         {
             if (! vc.active || ! vc.gate || vc.key == except) continue;
@@ -540,10 +556,10 @@ private:
             for (int k = 0; k < count; ++k) known |= seen[k] == vc.note;
             if (known) continue;
             seen[count++] = vc.note;
-            if (vc.sustained) { if (pedalAge == 0 || vc.age < pedalAge) pedalAge = vc.age, pedalNote = vc.note; }
-            else if (heldAge == 0 || vc.age < heldAge) heldAge = vc.age, heldNote = vc.note;
+            if (vc.sustained) { if (! anyPedal || vc.age < pedalAge) pedalAge = vc.age, pedalNote = vc.note, anyPedal = true; }
+            else if (! anyHeld || vc.age < heldAge) heldAge = vc.age, heldNote = vc.note, anyHeld = true;
         }
-        *victim = pedalAge != 0 ? pedalNote : heldNote;
+        *victim = anyPedal ? pedalNote : heldNote;
         return count;
     }
 
@@ -557,6 +573,14 @@ private:
                 vc.env1.gateOff(), vc.env2.gateOff();
                 vc.age = 0;
             }
+    }
+
+    // Stops a voice within a block (its gain ramps to nothing), then frees it.
+    void fadeOut (Voice& vc)
+    {
+        vc.gate = vc.sustained = vc.releaseDue = false;
+        vc.fading = true;
+        vc.age = 0;
     }
 
     void release (Voice& vc)
@@ -634,7 +658,7 @@ private:
                 if (voices[i].active && voices[i].key == key)
                 {
                     if (count < u) chosen[count++] = i;
-                    else letGo (voices[i].note); // more than unison asks now: the rest go
+                    else fadeOut (voices[i]); // more than unison asks now: the rest stop (not two voices on one pitch)
                 }
             // Then free voices, then released ones (oldest first); a held voice only when none is left, and then its
             // whole note goes.
@@ -729,7 +753,7 @@ private:
 
     void kill (Voice& vc)
     {
-        vc.active = vc.gate = vc.sustained = vc.releaseDue = false;
+        vc.active = vc.gate = vc.sustained = vc.releaseDue = vc.fading = false;
         vc.env1 = Adsr {}, vc.env2 = Adsr {};
         vc.plaits.Silence();
         vc.filter.clear();
@@ -785,8 +809,17 @@ private:
                             stackSize = 0;
                         }
                         break;
-                    case 121:
-                        if (e.index == 0) bend = 0.0f, wheel = 0.0f, channelPressure = 0.0f, legatoPedal = false, portamentoFrom = -1;
+                    case 121: // Reset All Controllers (RP-015): bend, wheel, pressure, the pedals
+                        if (e.index == 0)
+                        {
+                            bend = 0.0f, wheel = 0.0f, channelPressure = 0.0f, legatoPedal = false, portamentoFrom = -1;
+                            pedal = false;
+                            for (auto& vc : voices)
+                            {
+                                vc.pressure = 0.0f;
+                                if (vc.sustained) release (vc);
+                            }
+                        }
                         break;
                     case 123:
                         if (e.index == 0)
@@ -1088,7 +1121,7 @@ private:
         const float p = std::clamp (v (ParamId::pan) + spreadAt * v (ParamId::spread) + mod[Target::pan], -1.0f, 1.0f);
         const float angle = (p + 1.0f) * 0.78539816f;
         const float targetL = std::cos (angle), targetR = std::sin (angle);
-        const float gainTo = vca * level * voiceGain;
+        const float gainTo = vc.fading ? 0.0f : vca * level * voiceGain;
         const float gainStep = (gainTo - vc.vca) / (float) block;
         const float lStep = (targetL - vc.panL) / (float) block, rStep = (targetR - vc.panR) / (float) block;
         float g = vc.vca, gl = vc.panL, gr = vc.panR, peak = 0.0f;
@@ -1105,6 +1138,12 @@ private:
         }
         vc.vca = gainTo, vc.panL = targetL, vc.panR = targetR;
         vc.peak = std::max (peak, vc.peak * 0.995f);
+        if (vc.fading)
+        {
+            kill (vc);
+            vc.peak = 0.0f;
+            return;
+        }
         // A key let go before this block: it has played it, now it goes.
         if (vc.releaseDue)
             vc.releaseDue = false, release (vc);

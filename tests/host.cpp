@@ -762,6 +762,113 @@ void testEdges()
     }
 }
 
+// What a second review found: values queued over a deactivation, the victim picked when more notes come in one block
+// than voices allow, Reset All Controllers and the pedal, sleeping with small host blocks, a key replayed after unison
+// was lowered, note-offs by CLAP note id.
+void testReview()
+{
+    using namespace ParamId;
+    auto hz = [] (int k) { return 440.0 * std::pow (2.0, (k - 69) / 12.0); };
+    auto flushOne = [] (const clap_plugin* plugin, const clap_plugin_params* params, uint32_t id, double value) {
+        clap_event_param_value e {};
+        e.header = { sizeof (e), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
+        e.param_id = id, e.note_id = e.port_index = e.channel = e.key = -1, e.value = value;
+        const clap_event_param_value* list[1] = { &e };
+        clap_input_events in { list, [] (const clap_input_events*) { return 1u; },
+                               [] (const clap_input_events* x, uint32_t) { return &static_cast<const clap_event_param_value* const*> (x->ctx)[0]->header; } };
+        params->flush (plugin, &in, nullptr);
+    };
+    // A value queued just before the host deactivates does not come back over what was set while inactive.
+    {
+        Instance a;
+        a.render (128, {});
+        a.plugin->stop_processing (a.plugin);
+        flushOne (a.plugin, a.params, ParamId::frequency, 12.0); // active: queued
+        a.plugin->deactivate (a.plugin);
+        flushOne (a.plugin, a.params, ParamId::frequency, 0.0); // inactive: set at once
+        CHECK (a.plugin->activate (a.plugin, 48000.0, 1, 4096));
+        CHECK (a.plugin->start_processing (a.plugin));
+        const auto out = a.render (24000, sine ({ On (0, 69, 1.0) }));
+        CHECK_NEAR (semis (frequency (out.l, 48000.0, 4800, 24000)), 0.0, 0.02);
+        CHECK (a.value (ParamId::frequency) == 0.0);
+    }
+    // NOTES 4, unison 2, five keys on one frame: only the first lets go.
+    {
+        Instance a;
+        std::vector<Cue> c = sine ({ P (0, unison, 2), P (0, detune, 0), P (0, env1Release, 0) });
+        const int keys[5] = { 57, 60, 64, 67, 71 };
+        for (int k : keys) c.push_back (On (100, k, 1.0));
+        const auto out = a.render (48000, c);
+        CHECK (level (out.l, 48000.0, hz (57), 24000, 48000) < 0.002);
+        for (int i = 1; i < 5; ++i)
+        {
+            if (level (out.l, 48000.0, hz (keys[i]), 24000, 48000) < 0.02) std::printf ("  key %d was cut\n", keys[i]);
+            CHECK (level (out.l, 48000.0, hz (keys[i]), 24000, 48000) > 0.02);
+        }
+    }
+    // Reset All Controllers lifts the sustain pedal.
+    {
+        Instance a;
+        const auto out = a.render (48000, sine ({ P (0, env1Release, 0), Midi (0, 0xb0, 64, 127), On (0, 60, 1.0), Off (4800, 60),
+                                                  Midi (12000, 0xb0, 121, 0) }));
+        CHECK (rms (out.l, 6000, 11000) > 0.01);
+        CHECK (rms (out.l, 24000, 48000) < 1e-4);
+    }
+    // Silent in small host blocks (shorter than the event delay), it still lets the host sleep.
+    {
+        Instance a (44100.0);
+        a.render (44100, {}, 16);
+        CHECK (a.statuses.back() == CLAP_PROCESS_SLEEP);
+    }
+    // Unison lowered, a key replayed while its old voices ring: only one voice stays on that pitch.
+    {
+        Instance a;
+        const auto one = a.render (48000, sine ({ P (0, env1Release, envKnob (2000)), On (0, 69, 1.0) }));
+        Instance b;
+        const auto out = b.render (72000, sine ({ P (0, unison, 3), P (0, detune, 0), P (0, env1Release, envKnob (2000)), On (0, 69, 1.0),
+                                                  Off (12000, 69), P (14000, unison, 1), On (14400, 69, 1.0) }));
+        CHECK_NEAR (rms (out.l, 48000, 72000) / rms (one.l, 24000, 48000), 1.0, 0.1);
+    }
+    // A note-off by CLAP note id (key -1) lets go of that note only.
+    {
+        Instance a;
+        auto c = sine ({ P (0, env1Release, 0) });
+        a.render (48, c);
+        std::vector<float> l (48000), r (48000);
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            Events e;
+            if (pass == 0)
+            {
+                e.note (0, CLAP_EVENT_NOTE_ON, 57, 1.0), e.list.back().note.note_id = 7;
+                e.note (0, CLAP_EVENT_NOTE_ON, 64, 1.0), e.list.back().note.note_id = 8;
+            }
+            else
+                e.note (0, CLAP_EVENT_NOTE_OFF, -1, 0.0), e.list.back().note.note_id = 7;
+            float* outs[2] = { l.data() + pass * 24000, r.data() + pass * 24000 };
+            clap_audio_buffer buffer {};
+            buffer.data32 = outs;
+            buffer.channel_count = 2;
+            clap_output_events none { nullptr, [] (const clap_output_events*, const clap_event_header*) { return true; } };
+            for (uint32_t at = 0; at < 24000; at += 4000)
+            {
+                float* chunk[2] = { outs[0] + at, outs[1] + at };
+                buffer.data32 = chunk;
+                clap_process p {};
+                p.frames_count = 4000;
+                p.audio_outputs = &buffer;
+                p.audio_outputs_count = 1;
+                Events none2;
+                p.in_events = at == 0 ? &e.in : &none2.in;
+                p.out_events = &none;
+                a.plugin->process (a.plugin, &p);
+            }
+        }
+        CHECK (level (l, 48000.0, hz (57), 36000, 48000) < 0.002);
+        CHECK (level (l, 48000.0, hz (64), 36000, 48000) > 0.02);
+    }
+}
+
 // Every model plays, finite and bounded, each at its loudest settings too.
 void testModels (const std::string& folder)
 {
@@ -912,6 +1019,7 @@ int main (int argc, char** argv)
     run ("amp", testAmp);
     run ("retrigger", testRetrigger);
     run ("edges", testEdges);
+    run ("review", testReview);
     run ("models", [&] { testModels (folder); });
     run ("sleep", testSleep);
     run ("screen", [&] { testScreen (folder); });

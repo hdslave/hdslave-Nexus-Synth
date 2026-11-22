@@ -97,8 +97,9 @@ the key. Each strike restarts the envelopes. In Gate, the gate opens for the fir
 
 **LFOs.** Sine, Triangle, Saw, Square, Random (a new value each cycle) or Smooth (gliding from value to value).
 RATE runs 0-40 Hz. SYNC takes the rate from the song's tempo (DIV: 4 bars to 1/32, with triplets) and, while the
-song plays and RETRIG is off, locks the phase to the song's position. RETRIG restarts it on each new note (at PHASE).
-VOICE gives each voice its own LFO instead of one for all.
+song plays and RETRIG is off, locks the phase to the song's position. RETRIG restarts it on each new note (at PHASE; PHASE moves Sine, Triangle, Saw and Square, while Random
+and Smooth have no phase to move). VOICE gives each voice its own LFO instead of one for all; a voice's LFO runs from
+its own note and does not lock to the song.
 
 **Cycle.** A looping rise and fall (each 1 ms to 5 s), Linear, Exp or Log, unipolar (0 to 1) or bipolar (-1 to 1).
 RETRIG restarts the rise on each new note.
@@ -147,7 +148,7 @@ measured: pitch traces, level envelopes and filter spectra (`tests/render.cpp` r
   still rising after a second). Nexus's reaches full level at the attack time, then decays to sustain.
 - Its Smooth random smooths over only about 10 ms, even at full slew; Nexus's glides over Slew's share of each tick.
   Its Drift is very small at low rates; Nexus's wanders about as fast as RATE.
-- Synced LFOs follow the song's position while it plays (unless RETRIG is on).
+- The shared synced LFOs follow the song's position while it plays (unless RETRIG is on).
 
 ## Building and testing
 
@@ -160,7 +161,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
-- `tests/host.cpp` (263,552 checks):
+- `tests/host.cpp` (268,335 checks):
   - the description and ports
   - every parameter's text both ways, state, presets
   - A4 at 440 Hz at 22.05 to 96 kHz
@@ -173,6 +174,9 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
   - edges: values queued over a reset, a key replayed while it rings under NOTES, pedal notes let go before held
     keys, notes shorter than a block, a slide off a pedal-held voice, a glide set with its note, unison raised under
     Mono, the filter coming back in
+  - a second review: values queued before a deactivation, the note let go when a chord outruns the voices in
+    one block, Reset All Controllers and the pedal, sleeping in small host blocks, a key replayed after unison was
+    lowered, note-offs by CLAP note id
   - sleeping when silent
   - the page (its pictures in `build/`)
 - `tests/fingerprint.cpp`: a hash of every output sample over 64 scenarios: each preset and each model, the voice

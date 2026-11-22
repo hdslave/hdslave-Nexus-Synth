@@ -64,6 +64,10 @@ struct Plugin
     RowBits outgoing;
     bool valuesMoved = false;
     uint32_t shownNotes = 0, shownSounding = 0;
+    // [audio thread] The keys of the last notes a host named by CLAP note id, for note-offs that give only the id.
+    struct NoteId { int32_t id = -1; int16_t key = -1; };
+    NoteId noteIds[32];
+    uint32_t noteIdNext = 0;
 };
 
 Plugin& of (const clap_plugin* p) { return *static_cast<Plugin*> (p->plugin_data); }
@@ -176,6 +180,22 @@ void midi (Plugin& p, const uint8_t* data)
     }
 }
 
+// The key a CLAP note event stands for: its own, or (key -1) the key of the note it names by id; -1 when it names
+// neither (a wildcard), -2 when it names an id Nexus does not know (it is ignored).
+int keyOf (Plugin& p, const clap_event_note& n, bool forget)
+{
+    if (n.key >= 0 && n.key < 128) return n.key;
+    if (n.key >= 0 || n.note_id < 0) return n.key < 0 ? -1 : -2;
+    for (auto& s : p.noteIds)
+        if (s.id == n.note_id)
+        {
+            const int key = s.key;
+            if (forget) s.id = -1;
+            return key;
+        }
+    return -2;
+}
+
 void handle (Plugin& p, const clap_event_header* e)
 {
     if (e->space_id != CLAP_CORE_EVENT_SPACE_ID)
@@ -201,6 +221,8 @@ void handle (Plugin& p, const clap_event_header* e)
             const auto* n = reinterpret_cast<const clap_event_note*> (e);
             if (n->key >= 0 && n->key < 128)
             {
+                if (n->note_id >= 0)
+                    p.noteIds[p.noteIdNext++ % 32] = { n->note_id, (int16_t) n->key };
                 if (n->velocity > 0.0) p.engine.noteOn (n->key, (float) std::min (1.0, n->velocity));
                 else p.engine.noteOff (n->key);
             }
@@ -208,21 +230,24 @@ void handle (Plugin& p, const clap_event_header* e)
         }
         case CLAP_EVENT_NOTE_OFF:
         {
-            const auto* n = reinterpret_cast<const clap_event_note*> (e);
-            p.engine.noteOff (n->key >= 0 && n->key < 128 ? n->key : -1); // -1: every key
+            const int key = keyOf (p, *reinterpret_cast<const clap_event_note*> (e), true);
+            if (key != -2) p.engine.noteOff (key); // -1: every key
             break;
         }
         case CLAP_EVENT_NOTE_CHOKE:
         {
-            const auto* n = reinterpret_cast<const clap_event_note*> (e);
-            p.engine.choke (n->key >= 0 && n->key < 128 ? n->key : -1);
+            const int key = keyOf (p, *reinterpret_cast<const clap_event_note*> (e), true);
+            if (key != -2) p.engine.choke (key);
             break;
         }
         case CLAP_EVENT_NOTE_EXPRESSION:
         {
             const auto* x = reinterpret_cast<const clap_event_note_expression*> (e);
-            if (x->expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && x->key >= 0 && x->key < 128)
-                p.engine.polyPressure (x->key, (float) x->value);
+            clap_event_note named {};
+            named.key = x->key, named.note_id = x->note_id;
+            const int key = keyOf (p, named, false);
+            if (x->expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && key >= 0)
+                p.engine.polyPressure (key, (float) x->value);
             break;
         }
         case CLAP_EVENT_MIDI: midi (p, reinterpret_cast<const clap_event_midi*> (e)->data); break;
