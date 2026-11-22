@@ -94,10 +94,15 @@ struct Cue
     uint32_t a = 0;   // parameter id, key, or MIDI status
     double b = 0.0;   // value, velocity, or MIDI data 1
     int c = 0;        // MIDI data 2
+    int32_t id = -1;  // a note's CLAP note id
 };
 Cue P (uint64_t f, uint32_t id, double v) { return { f, Cue::param, id, v, 0 }; }
 Cue On (uint64_t f, int key, double vel = 0.8) { return { f, Cue::on, (uint32_t) key, vel, 0 }; }
 Cue Off (uint64_t f, int key) { return { f, Cue::off, (uint32_t) key, 0.0, 0 }; }
+// Notes named by CLAP note id (key -1 in an off or a choke: the id alone).
+Cue OnId (uint64_t f, int key, int32_t id, double vel = 0.8) { return { f, Cue::on, (uint32_t) key, vel, 0, id }; }
+Cue OffId (uint64_t f, int key, int32_t id) { return { f, Cue::off, (uint32_t) key, 0.0, 0, id }; }
+Cue ChokeId (uint64_t f, int key, int32_t id) { return { f, Cue::choke, (uint32_t) key, 0.0, 0, id }; }
 Cue Midi (uint64_t f, int status, int d1, int d2) { return { f, Cue::midi, (uint32_t) status, (double) d1, d2 }; }
 
 struct Stereo { std::vector<float> l, r; };
@@ -162,6 +167,7 @@ struct Instance
                         case Cue::choke: e.note (t, CLAP_EVENT_NOTE_CHOKE, (int16_t) c.a, 0.0); break;
                         case Cue::midi: e.midi (t, (uint8_t) c.a, (uint8_t) c.b, (uint8_t) c.c); break;
                     }
+                    if (c.kind == Cue::on || c.kind == Cue::off || c.kind == Cue::choke) e.list.back().note.note_id = c.id;
                 }
             e.sort();
             float* outs[2] = { out.l.data() + at, out.r.data() + at };
@@ -382,7 +388,7 @@ void testPresets (const std::string& folder)
                                    128, true);
         CHECK (finite (out.l) && finite (out.r));
         CHECK (rms (out.l, 0, 96000) > 1e-3);
-        CHECK (peak (out.l) < 1.5);
+        CHECK (peak (out.l) <= 1.0 && peak (out.r) <= 1.0);
         writeWav ((folder + "/preset-" + p.key + ".wav").c_str(), out.l, out.r, 48000);
     }
     Instance a;
@@ -869,6 +875,94 @@ void testReview()
     }
 }
 
+// What a third review found: the output passes +-1 when voices pile up, a held note's id forgotten after 32 more
+// notes (it sticks), and chokes and All Sound Off stepping to zero in one sample.
+void testThird()
+{
+    using namespace ParamId;
+    auto hz = [] (int k) { return 440.0 * std::pow (2.0, (k - 69) / 12.0); };
+    // The output stage: a chord at full Volume (+6 dB) sums past full scale; it stays within +-1, and below the knee
+    // (0.8, about -2 dBFS) passes as it is (the same chord at a quarter of that volume, four times over, is the same
+    // sample for sample).
+    {
+        const std::vector<Cue> chord = { On (0, 48, 1.0), On (0, 55, 1.0), On (0, 60, 1.0), On (0, 64, 1.0) };
+        auto at = [&] (double volume) {
+            Instance a;
+            std::vector<Cue> c = { P (0, ParamId::volume, volume) };
+            c.insert (c.end(), chord.begin(), chord.end());
+            return a.render (48000, c);
+        };
+        const auto full = at (2.0), quiet = at (0.5);
+        CHECK (peak (full.l) <= 1.0 && peak (full.r) <= 1.0);
+        CHECK (4.0 * std::max (peak (quiet.l), peak (quiet.r)) > 1.0); // what it would reach unbounded
+        CHECK (std::max (peak (quiet.l), peak (quiet.r)) < 0.8);
+        double worst = 0.0;
+        size_t below = 0;
+        for (size_t i = 0; i < full.l.size(); ++i)
+            for (const auto* ch : { &full.l, &full.r })
+            {
+                const auto& q = ch == &full.l ? quiet.l : quiet.r;
+                if (std::fabs (4.0 * q[i]) >= 0.79) continue;
+                ++below;
+                worst = std::max (worst, std::fabs ((double) (*ch)[i] - 4.0 * q[i]));
+            }
+        CHECK (below > 48000);
+        if (worst > 1e-5) std::printf ("  below the knee the output moved by %g\n", worst);
+        CHECK (worst < 1e-5);
+        // Unison 8 at full volume through a fully resonant filter (several times full scale summed): still within +-1.
+        Instance hot;
+        const auto loud = hot.render (48000, sine ({ P (0, unison, 8), P (0, notes, 1), P (0, detune, 0), P (0, spread, 0), P (0, volume, 2),
+                                                     P (0, resonance, 1), P (0, cutoff, 0.5), On (0, 69, 1.0) }));
+        CHECK (peak (loud.l) <= 1.0 && peak (loud.r) <= 1.0 && peak (loud.l) > 0.95);
+    }
+    // A held note's id still names it after 32 more notes (each on and off by id): an off and a choke by id alone
+    // (key -1) reach it.
+    {
+        Instance a;
+        std::vector<Cue> c = sine ({ P (0, env1Release, 0), OnId (0, 57, 1, 1.0), OnId (0, 64, 2, 1.0) });
+        for (int i = 0; i < 32; ++i)
+        {
+            const uint64_t at = 480 + 480 * (uint64_t) i;
+            c.push_back (OnId (at, 69 + i % 12, 3 + i, 0.5));
+            c.push_back (OffId (at + 240, -1, 3 + i));
+        }
+        c.push_back (OffId (16800, -1, 1));
+        c.push_back (ChokeId (16800, -1, 2));
+        const auto out = a.render (36000, c);
+        CHECK (level (out.l, 48000.0, hz (57), 9600, 14400) > 0.02); // held through the 32
+        CHECK (level (out.l, 48000.0, hz (64), 9600, 14400) > 0.02);
+        if (level (out.l, 48000.0, hz (57), 24000, 36000) >= 0.002) std::printf ("  note id 1 (key 57) stuck\n");
+        if (level (out.l, 48000.0, hz (64), 24000, 36000) >= 0.002) std::printf ("  note id 2 (key 64) stuck\n");
+        CHECK (level (out.l, 48000.0, hz (57), 24000, 36000) < 0.002);
+        CHECK (level (out.l, 48000.0, hz (64), 24000, 36000) < 0.002);
+        CHECK (rms (out.l, 24000, 36000) < 1e-4); // nothing else left either
+    }
+    // A choke and All Sound Off fade within a block instead of stepping to zero: at nine places along a 110 Hz cycle
+    // (40 degrees apart), no sample-to-sample step past a quarter of the level (a cut at the crest steps the whole
+    // level).
+    for (int how = 0; how < 2; ++how)
+    {
+        double worst = 0.0;
+        for (int k = 0; k < 9; ++k)
+        {
+            Instance a;
+            const uint64_t at = 12000 + 48 * (uint64_t) k;
+            auto c = sine ({ On (0, 45, 1.0) });
+            if (how == 0) c.push_back ({ at, Cue::choke, 45, 0.0, 0 });
+            else c.push_back (Midi (at, 0xb0, 120, 0));
+            const auto out = a.render (24000, c);
+            double amplitude = 0.0, step = 0.0;
+            for (size_t i = 6000; i < 12000; ++i) amplitude = std::max (amplitude, (double) std::fabs (out.l[i]));
+            for (size_t i = at; i < at + 600; ++i) step = std::max (step, (double) std::fabs (out.l[i] - out.l[i - 1]));
+            CHECK (amplitude > 0.1);
+            CHECK (rms (out.l, at + 600, 24000) < 1e-6); // and it has stopped
+            worst = std::max (worst, step / amplitude);
+        }
+        if (worst >= 0.25) std::printf ("  %s steps by %.2f of the level\n", how == 0 ? "a choke" : "CC 120", worst);
+        CHECK (worst < 0.25);
+    }
+}
+
 // Every model plays, finite and bounded, each at its loudest settings too.
 void testModels (const std::string& folder)
 {
@@ -881,7 +975,7 @@ void testModels (const std::string& folder)
         CHECK (finite (out.l) && finite (out.r));
         if (rms (out.l, 0, 24000) < 1e-4) std::printf ("  model %d (%s) is silent\n", m, modelChoices[m]);
         CHECK (rms (out.l, 0, 24000) > 1e-4);
-        CHECK (peak (out.l) < 1.5);
+        CHECK (peak (out.l) <= 1.0 && peak (out.r) <= 1.0);
         allL.insert (allL.end(), out.l.begin(), out.l.end());
         allR.insert (allR.end(), out.r.begin(), out.r.end());
         Instance hot;
@@ -890,7 +984,8 @@ void testModels (const std::string& folder)
                                                P (0, spread, 0), P (0, fmAtt, 1), P (0, timbreAtt, 1), P (0, route (0, 0), 1), On (0, 36, 1.0),
                                                On (100, 108, 1.0) });
         CHECK (finite (loud.l) && finite (loud.r));
-        CHECK (peak (loud.l) < 64.0);
+        if (peak (loud.l) > 1.0 || peak (loud.r) > 1.0) std::printf ("  model %d at its loudest peaks at %g\n", m, std::max (peak (loud.l), peak (loud.r)));
+        CHECK (peak (loud.l) <= 1.0 && peak (loud.r) <= 1.0);
     }
     writeWav ((folder + "/models.wav").c_str(), allL, allR, 48000);
 }
@@ -1020,6 +1115,7 @@ int main (int argc, char** argv)
     run ("retrigger", testRetrigger);
     run ("edges", testEdges);
     run ("review", testReview);
+    run ("third", testThird);
     run ("models", [&] { testModels (folder); });
     run ("sleep", testSleep);
     run ("screen", [&] { testScreen (folder); });

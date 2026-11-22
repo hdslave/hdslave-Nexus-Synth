@@ -17,9 +17,11 @@ Nexus also has its own page on the MPC's screen.
 
 The synthesis is Plaits' own code (Emilie Gillet, MIT licence): the 24 engines, the internal decay envelope, the
 low-pass gate and the output stage are the module firmware's. Nexus runs them at 48 kHz, as the module does, and
-resamples to the host's rate, so the sound and the tuning are the same at 44.1, 48 or 96 kHz.
+resamples to the host's rate, so the sound and the tuning are the same at 44.1, 48 or 96 kHz. The mix then passes a
+soft limiter: samples up to about -2 dBFS go through untouched, louder ones bend smoothly toward full scale, so eight
+resonant voices at full volume never pass +-1.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.0). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.1). Not yet run on the MPC itself.
 
 ## Install
 
@@ -161,7 +163,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
-- `tests/host.cpp` (268,335 checks):
+- `tests/host.cpp` (273,241 checks):
   - the description and ports
   - every parameter's text both ways, state, presets
   - A4 at 440 Hz at 22.05 to 96 kHz
@@ -170,13 +172,15 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
   - Mono, Legato, glide, Slide and Tie
   - MIDI bend, wheel and pressure; the channel modes; chokes and the sustain pedal
   - the modulation depths, the four amp modes and the retrigger rate
-  - every model at default and extreme settings
+  - every model at default and extreme settings, the output within +-1
   - edges: values queued over a reset, a key replayed while it rings under NOTES, pedal notes let go before held
     keys, notes shorter than a block, a slide off a pedal-held voice, a glide set with its note, unison raised under
     Mono, the filter coming back in
   - a second review: values queued before a deactivation, the note let go when a chord outruns the voices in
     one block, Reset All Controllers and the pedal, sleeping in small host blocks, a key replayed after unison was
     lowered, note-offs by CLAP note id
+  - a third review: the output within +-1 and untouched below about -2 dBFS, a held note's id still known after 32 more
+    notes, chokes and All Sound Off fading within a block instead of stepping
   - sleeping when silent
   - the page (its pictures in `build/`)
 - `tests/fingerprint.cpp`: a hash of every output sample over 64 scenarios: each preset and each model, the voice
@@ -189,16 +193,16 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
 
 | Case | Instructions a block |
 |---|---|
-| Worst: eight 6-op FM voices, every route on, a resonant filter | 587,500 (about 12 % of one core) |
-| Pad: the Wavetable Pad, four notes | 240,800 |
-| Typical: the Saw Lead playing a line | 116,300 |
-| Silent | 9,700 |
+| Worst: eight 6-op FM voices, every route on, a resonant filter | 589,600 (about 12 % of one core) |
+| Pad: the Wavetable Pad, four notes | 242,400 |
+| Typical: the Saw Lead playing a line | 117,800 |
+| Silent | 11,000 |
 
 Eight voices of one model (eight keys held, `bench model:N`) cost from about 212,000 instructions a block (Chiptune,
 Speech: 4.4 % of a core) to 650,000 (Particle: 13.5 %); most models sit between 7 and 12 %.
 
 At other host rates the resampler adds a little: the pad costs 97 million instructions a second at 44.1 kHz (Melodee's
-default) against 90 million at 48 kHz, where samples pass as they are. Silent, the resampler skips its work.
+default) against 91 million at 48 kHz, where samples pass as they are. Silent, the resampler skips its work.
 
 The PLAITS page averaged about 99,000 instructions per painted frame in the four-second pad benchmark. Silent voices cost nothing. When everything is silent,
 the plug-in tells the host it may sleep.

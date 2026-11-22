@@ -7,7 +7,7 @@ preset-fm-piano ab77997b9d5044e5
 preset-fm-bells 7e4179ddf5881f25
 preset-terrain-lead c757f4675920c759
 preset-string-ensemble 58665ebb91d7ba7d
-preset-chip-arp 6ac24714c74fd315
+preset-chip-arp e4a9d3f80110756d
 preset-fold-bass da9f21290b9aeb01
 preset-fm-pluck 5901c21063580569
 preset-formant-voice 88379a478e5a7dc1

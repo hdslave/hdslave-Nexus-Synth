@@ -30,6 +30,19 @@ constexpr float controlRate = (float) internalRate / (float) block; // 4 kHz
 // One voice's level in the mix, against Plaits' full scale (the plug-in Nexus is modelled on, measured).
 constexpr float voiceGain = 0.356f;
 
+// The output stage, at the host's rate (after the resampler, which may overshoot): samples up to 0.8 (about -2 dBFS)
+// pass as they are; above, a knee (a rational tanh, slope 1 where it starts and 0 where it ends) bends them smoothly to
+// full scale, reached at 1.4 (about +3 dBFS). Eight resonant voices at full volume never pass +-1.
+constexpr float limiterKnee = 0.8f;
+inline float softLimit (float x)
+{
+    const float a = std::fabs (x);
+    if (a <= limiterKnee) return x;
+    const float u = std::min ((a - limiterKnee) * (1.0f / (1.0f - limiterKnee)), 3.0f), u2 = u * u;
+    const float y = std::min (limiterKnee + (1.0f - limiterKnee) * (u * (27.0f + u2) / (27.0f + 9.0f * u2)), 1.0f);
+    return x < 0.0f ? -y : y;
+}
+
 // What the audio thread tells the page.
 struct Telemetry
 {
@@ -365,8 +378,8 @@ public:
                 tick();
             float l, r;
             resampler.next (ringL, ringR, silentFrom, l, r);
-            left[n] = l;
-            if (right != nullptr) right[n] = r;
+            left[n] = softLimit (l);
+            if (right != nullptr) right[n] = softLimit (r);
         }
         hostFrame += frames;
         stampFrame = 0;
@@ -783,9 +796,10 @@ private:
                 break;
             case Ev::noteOn: noteOnNow (e.key, e.v); break;
             case Ev::noteOff: noteOffNow (e.key == 255 ? 255 : e.key); break;
+            // A choke and All Sound Off stop their voices within a block (0.25 ms), not in one sample: no step.
             case Ev::choke:
                 for (auto& vc : voices)
-                    if (vc.active && (e.key == 255 || vc.key == e.key)) kill (vc);
+                    if (vc.active && (e.key == 255 || vc.key == e.key)) fadeOut (vc);
                 if (e.key == 255) stackSize = 0;
                 else removeKey (e.key);
                 break;
@@ -805,7 +819,8 @@ private:
                     case 120:
                         if (e.index == 0)
                         {
-                            for (auto& vc : voices) kill (vc);
+                            for (auto& vc : voices)
+                                if (vc.active) fadeOut (vc);
                             stackSize = 0;
                         }
                         break;

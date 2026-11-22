@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <new>
 
 namespace nexus
@@ -64,10 +65,15 @@ struct Plugin
     RowBits outgoing;
     bool valuesMoved = false;
     uint32_t shownNotes = 0, shownSounding = 0;
-    // [audio thread] The keys of the last notes a host named by CLAP note id, for note-offs that give only the id.
-    struct NoteId { int32_t id = -1; int16_t key = -1; };
-    NoteId noteIds[32];
-    uint32_t noteIdNext = 0;
+    // [audio thread] The CLAP note id of the note each key plays (-1: none), for note-offs, chokes and pressure that
+    // name a note by id only. The engine plays one note a key (a key played again takes its voices over), so a note
+    // still held is always here, however many notes came since.
+    struct NoteIds
+    {
+        int32_t of[128];
+        NoteIds() { clear(); }
+        void clear() { std::fill (std::begin (of), std::end (of), -1); }
+    } noteIds;
 };
 
 Plugin& of (const clap_plugin* p) { return *static_cast<Plugin*> (p->plugin_data); }
@@ -169,9 +175,10 @@ void midi (Plugin& p, const uint8_t* data)
     switch (status)
     {
         case 0x90:
+            p.noteIds.of[a] = -1; // the key's note now has no CLAP id
             if (b > 0) { p.engine.noteOn (a, (float) b / 127.0f); break; }
             [[fallthrough]];
-        case 0x80: p.engine.noteOff (a); break;
+        case 0x80: p.noteIds.of[a] = -1, p.engine.noteOff (a); break;
         case 0xa0: p.engine.polyPressure (a, (float) b / 127.0f); break;
         case 0xb0: p.engine.controller (a, b); break;
         case 0xd0: p.engine.pressure ((float) a / 127.0f); break;
@@ -181,16 +188,25 @@ void midi (Plugin& p, const uint8_t* data)
 }
 
 // The key a CLAP note event stands for: its own, or (key -1) the key of the note it names by id; -1 when it names
-// neither (a wildcard), -2 when it names an id Nexus does not know (it is ignored).
+// neither (a wildcard), -2 when it names an id Nexus does not know (it is ignored). `forget`: the note ends (an off or
+// a choke), so its id no longer names a key.
 int keyOf (Plugin& p, const clap_event_note& n, bool forget)
 {
-    if (n.key >= 0 && n.key < 128) return n.key;
-    if (n.key >= 0 || n.note_id < 0) return n.key < 0 ? -1 : -2;
-    for (auto& s : p.noteIds)
-        if (s.id == n.note_id)
+    if (n.key >= 0 && n.key < 128)
+    {
+        if (forget) p.noteIds.of[n.key] = -1;
+        return n.key;
+    }
+    if (n.key >= 0) return -2;
+    if (n.note_id < 0)
+    {
+        if (forget) p.noteIds.clear();
+        return -1;
+    }
+    for (int key = 0; key < 128; ++key)
+        if (p.noteIds.of[key] == n.note_id)
         {
-            const int key = s.key;
-            if (forget) s.id = -1;
+            if (forget) p.noteIds.of[key] = -1;
             return key;
         }
     return -2;
@@ -221,8 +237,12 @@ void handle (Plugin& p, const clap_event_header* e)
             const auto* n = reinterpret_cast<const clap_event_note*> (e);
             if (n->key >= 0 && n->key < 128)
             {
+                // The key's note now (it takes over any older note on the key). An id names one live note at a time:
+                // another key still showing it had a note that ended without an off.
                 if (n->note_id >= 0)
-                    p.noteIds[p.noteIdNext++ % 32] = { n->note_id, (int16_t) n->key };
+                    for (auto& id : p.noteIds.of)
+                        if (id == n->note_id) id = -1;
+                p.noteIds.of[n->key] = n->velocity > 0.0 ? n->note_id : -1;
                 if (n->velocity > 0.0) p.engine.noteOn (n->key, (float) std::min (1.0, n->velocity));
                 else p.engine.noteOff (n->key);
             }
@@ -455,6 +475,7 @@ bool pluginActivate (const clap_plugin* plugin, double rate, uint32_t, uint32_t)
         p.engine.set ((uint32_t) i, v);
     }
     p.mainChanged.store (false, std::memory_order_relaxed);
+    p.noteIds.clear();
     p.engine.prepare (rate);
     p.active = true;
     return true;
@@ -471,6 +492,7 @@ void pluginStop (const clap_plugin*) {}
 void pluginReset (const clap_plugin* plugin)
 {
     auto& p = of (plugin);
+    p.noteIds.clear();
     p.engine.reset();
 }
 
