@@ -1,25 +1,21 @@
 # hdslave Nexus
 
-A CLAP synthesizer for the Akai MPC Sample (Melodee and hdslaveOS) that plays the 24 macro-oscillator models of
-Mutable Instruments' Plaits as a polyphonic instrument. It has every control of the MPC Plaits plug-in made for
-Melodee (poloq's VST2):
+**An 8-voice polyphonic macro-oscillator synthesizer powered by all 24 Mutable Instruments Plaits models, as a CLAP plug-in for the Akai MPC Sample.**
 
-- the models and their three macros
-- attenuverters and the low-pass gate
-- mono, poly and legato voices with unison
-- two ADSRs and a retrigger rate
-- two LFOs, a cycling envelope and a random source
-- a filter
-- the fixed modulation routes and a 4 x 4 assign matrix
+![Nexus seven acid-rave pages running in hdslaveOS](docs/nexus-pages.gif)
+
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55). It brings every control of the MPC Plaits plug-in (poloq's VST2) into a native CLAP instrument with seven bespoke, animated screen pages:
+
+- All 24 Plaits macro-oscillator models and their three macros
+- Attenuverters and the modelled low-pass gate
+- Mono, poly, and legato voice modes with unison, detune, and spread
+- Two ADSRs and a retrigger rate
+- Two LFOs, a cycling envelope, and a random source
+- Multi-mode filter
+- Fixed modulation routes and a 4 × 4 assign matrix
 - Melodee's Slide and Tie
 
-Nexus also has its own page on the MPC's screen.
-
-The synthesis is Plaits' own code (Emilie Gillet, MIT licence): the 24 engines, the internal decay envelope, the
-low-pass gate and the output stage are the module firmware's. Nexus runs them at 48 kHz, as the module does, and
-resamples to the host's rate, so the sound and the tuning are the same at 44.1, 48 or 96 kHz. The mix then passes a
-soft limiter: samples up to about -2 dBFS go through untouched, louder ones bend smoothly toward full scale, so eight
-resonant voices at full volume never pass +-1.
+The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
 Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.1). Not yet run on the MPC itself.
 
