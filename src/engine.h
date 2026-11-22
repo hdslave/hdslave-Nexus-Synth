@@ -270,6 +270,7 @@ public:
     explicit Engine (Telemetry* telemetry) : tel (telemetry)
     {
         for (int i = 0; i < paramCount; ++i) value[i] = paramTable[i].def;
+        std::fill (keyVelocity, keyVelocity + 128, 1.0f);
         for (int v = 0; v < maxVoices; ++v)
         {
             stmlib::BufferAllocator allocator (voices[v].ram, plaits::kNexusVoiceRam);
@@ -292,10 +293,14 @@ public:
 
     void reset()
     {
+        // Values still waiting in the queue are the host's already: they hold across a reset.
+        for (uint32_t i = head; i != tail; i = (i + 1) % queueSize)
+            if (events[i].type == Ev::param) value[events[i].index] = events[i].v, dirty = true;
+        if (dirty) derive();
         for (auto& v : voices)
         {
             v.plaits.Silence();
-            v.active = v.gate = v.sustained = false;
+            v.active = v.gate = v.sustained = v.releaseDue = false;
             v.env1 = Adsr {}, v.env2 = Adsr {};
             v.filter.clear();
             v.key = -1;
@@ -320,6 +325,7 @@ public:
         tempo = 120.0, beatsAt = 0.0, beatsSample = 0, playing = false;
         lastKey = -1;
         noteCounter = 0;
+        std::fill (keyVelocity, keyVelocity + 128, 1.0f);
     }
 
     // --- Events: stamped at `frame` of the block being processed ------------------------------------------------------
@@ -360,7 +366,7 @@ public:
     }
 
     // Nothing sounds, nothing waits: the host may let the plug-in sleep.
-    bool quiet() const { return head == tail && quietBlocks * block > resampler.width() + 4 * block; }
+    bool quiet() const { return head == tail && (long) quietBlocks * block > resampler.width() + 4 * block; }
     uint32_t hostRate() const { return hostHz; }
     float valueOf (uint32_t id) const { return value[id]; }
 
@@ -382,6 +388,10 @@ private:
         char ram[plaits::kNexusVoiceRam];
         uint32_t random = 0x21;
         bool active = false, gate = false, sustained = false;
+        // A key let go before the voice has played a block plays that block first (a note shorter than 0.25 ms still
+        // strikes); `rendered`: it has played one since it started.
+        bool releaseDue = false, rendered = false, filterOpen = true;
+        float lastIn = 0.0f; // the filter's last input, to take it up again from where the sound is
         int key = -1;
         uint32_t note = 0, age = 0; // the note it plays (voices of one note share it), when it started
         int unisonIndex = 0, unisonCount = 1;
@@ -475,7 +485,9 @@ private:
         vc.pitch = fromPitch;
         vc.glide = coef;
         vc.silent = 0;
+        vc.releaseDue = false;
         if (! retrigger) return;
+        vc.rendered = false;
         vc.age = ++ages;
         vc.velocity = velocity;
         vc.velocityAmount = curvedVelocity (velocity);
@@ -491,6 +503,7 @@ private:
         if (! wasActive)
         {
             vc.filter.clear();
+            vc.lastIn = 0.0f;
             vc.vca = 0.0f;
         }
     }
@@ -513,45 +526,47 @@ private:
         lastKey = key;
     }
 
-    // The voices a note gets in Poly: free ones first, then released ones (oldest first), then the oldest note's.
-    void pickVoices (int count, int* out)
-    {
-        bool taken[maxVoices] {};
-        for (int n = 0; n < count; ++n)
-        {
-            int best = -1;
-            long score = 0;
-            for (int i = 0; i < maxVoices; ++i)
-            {
-                if (taken[i]) continue;
-                const Voice& vc = voices[i];
-                const long s = ! vc.active ? -(1L << 40) : (! vc.gate ? -(1L << 32) + (long) vc.age : (long) vc.age);
-                if (best < 0 || s < score) best = i, score = s;
-            }
-            taken[best] = true;
-            out[n] = best;
-        }
-    }
-
-    int heldNotes (uint32_t* oldestNote) const
+    // The notes held (keys down or the pedal), not counting key `except`; `victim`: the one to let go first, the oldest
+    // the pedal holds, else the oldest key.
+    int heldNotes (uint32_t* victim, int except) const
     {
         uint32_t seen[maxVoices];
         int count = 0;
-        uint32_t oldestAge = 0;
+        uint32_t heldAge = 0, pedalAge = 0, heldNote = 0, pedalNote = 0;
         for (const auto& vc : voices)
         {
-            if (! vc.active || ! vc.gate) continue;
+            if (! vc.active || ! vc.gate || vc.key == except) continue;
             bool known = false;
             for (int k = 0; k < count; ++k) known |= seen[k] == vc.note;
             if (known) continue;
             seen[count++] = vc.note;
-            if (oldestAge == 0 || vc.age < oldestAge) oldestAge = vc.age, *oldestNote = vc.note;
+            if (vc.sustained) { if (pedalAge == 0 || vc.age < pedalAge) pedalAge = vc.age, pedalNote = vc.note; }
+            else if (heldAge == 0 || vc.age < heldAge) heldAge = vc.age, heldNote = vc.note;
         }
+        *victim = pedalAge != 0 ? pedalNote : heldNote;
         return count;
+    }
+
+    // Lets a note's voices go at once (they are about to be taken).
+    void letGo (uint32_t note)
+    {
+        for (auto& vc : voices)
+            if (vc.active && vc.gate && vc.note == note)
+            {
+                vc.gate = vc.sustained = vc.releaseDue = false;
+                vc.env1.gateOff(), vc.env2.gateOff();
+                vc.age = 0;
+            }
     }
 
     void release (Voice& vc)
     {
+        if (! vc.rendered)
+        {
+            vc.releaseDue = true;
+            vc.sustained = false;
+            return;
+        }
         vc.gate = false;
         vc.sustained = false;
         vc.env1.gateOff();
@@ -569,7 +584,7 @@ private:
         for (auto& vc : voices)
             if (vc.active && vc.gate && vc.key == from)
             {
-                vc.key = to, vc.target = (float) to, vc.glide = coef;
+                vc.key = to, vc.target = (float) to, vc.glide = coef, vc.sustained = false;
                 any = true;
             }
         if (! any) return false;
@@ -604,36 +619,40 @@ private:
         if (mode() == VoiceMode::poly)
         {
             // The same key again: the voices on it start over (held or still ringing), so two voices never play one
-            // pitch against each other.
-            int same[maxVoices], sameCount = 0;
-            bool sameHeld = false;
-            for (int i = 0; i < maxVoices; ++i)
-                if (voices[i].active && voices[i].key == key) same[sameCount++] = i, sameHeld |= voices[i].gate;
-            uint32_t oldest = 0;
-            const int held = heldNotes (&oldest);
-            const bool legato = held - (sameHeld ? 1 : 0) > 0 && lastKey >= 0;
+            // pitch against each other. Past NOTES (other keys held), the oldest note lets go.
+            const int maxNotes = std::max (1, std::min (iv (ParamId::notes), maxVoices / u));
+            uint32_t victim = 0;
+            const int others = heldNotes (&victim, key);
+            if (others >= maxNotes)
+                for (auto& vc : voices)
+                    if (vc.active && vc.gate && vc.note == victim) release (vc), vc.age = 0;
+            const bool legato = others > 0 && lastKey >= 0;
             const uint32_t note = ++noteCounter;
             int chosen[maxVoices];
-            int count = u;
-            if (sameCount > 0)
-            {
-                count = std::min (u, sameCount);
-                std::copy (same, same + count, chosen);
-                if (count < u) // unison grew: more voices
+            int count = 0;
+            for (int i = 0; i < maxVoices; ++i)
+                if (voices[i].active && voices[i].key == key)
                 {
-                    int more[maxVoices];
-                    pickVoices (maxVoices, more);
-                    for (int i = 0; i < maxVoices && count < u; ++i)
-                        if (std::find (chosen, chosen + count, more[i]) == chosen + count) chosen[count++] = more[i];
+                    if (count < u) chosen[count++] = i;
+                    else letGo (voices[i].note); // more than unison asks now: the rest go
                 }
-            }
-            else
+            // Then free voices, then released ones (oldest first); a held voice only when none is left, and then its
+            // whole note goes.
+            while (count < u)
             {
-                const int maxNotes = std::max (1, std::min (iv (ParamId::notes), maxVoices / u));
-                if (held >= maxNotes)
-                    for (auto& vc : voices)
-                        if (vc.active && vc.gate && vc.note == oldest) release (vc), vc.age = 0; // stolen first
-                pickVoices (u, chosen);
+                int best = -1;
+                long score = 0;
+                for (int i = 0; i < maxVoices; ++i)
+                {
+                    const Voice& vc = voices[i];
+                    if (std::find (chosen, chosen + count, i) != chosen + count || (vc.active && vc.gate)) continue;
+                    const long sc = ! vc.active ? -1 : (long) vc.age;
+                    if (best < 0 || sc < score) best = i, score = sc;
+                }
+                if (best >= 0) { chosen[count++] = best; continue; }
+                uint32_t oldest = 0;
+                if (heldNotes (&oldest, key) == 0) break;
+                letGo (oldest);
             }
             const bool glides = legato && glideMs (v (ParamId::glide)) > 0.0f;
             for (int i = 0; i < count; ++i)
@@ -642,6 +661,7 @@ private:
             return;
         }
         // Mono and Legato: one note, `u` voices (the first ones).
+        keyVelocity[key] = velocity;
         const bool overlap = stackSize > 0;
         pushKey (key);
         const bool retrigger = mode() == VoiceMode::mono || ! overlap || ! voices[0].active || ! voices[0].gate;
@@ -687,10 +707,16 @@ private:
             const int back = stack[stackSize - 1];
             const bool retrigger = mode() == VoiceMode::mono;
             const uint32_t note = retrigger ? ++noteCounter : voices[0].note;
-            for (int i = 0; i < unisonNow(); ++i)
+            const int u = unisonNow();
+            for (int i = 0; i < maxVoices; ++i)
             {
                 Voice& vc = voices[i];
-                startVoice (vc, back, vc.velocity, note, i, unisonNow(), retrigger || ! vc.active, vc.active ? vc.pitch : (float) back,
+                if (i >= u)
+                {
+                    if (vc.active && vc.gate) release (vc);
+                    continue;
+                }
+                startVoice (vc, back, keyVelocity[back], note, i, u, retrigger || ! vc.active, vc.active ? vc.pitch : (float) back,
                             glideCoef);
             }
             if (retrigger) noteStarted (back);
@@ -703,7 +729,7 @@ private:
 
     void kill (Voice& vc)
     {
-        vc.active = vc.gate = vc.sustained = false;
+        vc.active = vc.gate = vc.sustained = vc.releaseDue = false;
         vc.env1 = Adsr {}, vc.env2 = Adsr {};
         vc.plaits.Silence();
         vc.filter.clear();
@@ -712,6 +738,8 @@ private:
 
     void apply (const Ev& e)
     {
+        // A value set at the same time as a note is in place for it.
+        if (dirty && e.type != Ev::param) derive();
         switch (e.type)
         {
             case Ev::param:
@@ -918,7 +946,7 @@ private:
         }
         rendered += block;
         if (any) silentFrom = rendered;
-        quietBlocks = any ? 0 : quietBlocks + 1;
+        quietBlocks = any ? 0 : std::min (quietBlocks + 1, 1 << 20);
 
         // The page's view.
         tel->sounding.store (sounding, std::memory_order_relaxed);
@@ -1039,6 +1067,7 @@ private:
         stmlib::Random::Seed (vc.random);
         vc.plaits.Render (patch, m, vc.out, vc.aux, block);
         vc.random = stmlib::Random::state();
+        vc.rendered = true;
 
         // Out / aux, the filter, the VCA, volume and pan.
         const float aux = std::clamp (v (ParamId::auxMix) + mod[Target::aux], 0.0f, 1.0f);
@@ -1047,7 +1076,14 @@ private:
         voiceCutoff[index] = cut;
         const int filter = iv (ParamId::filterMode);
         const bool open = filter == 0 && cut >= 0.999f && reso <= 0.001f;
-        if (! open) vc.filter.set (cutoffHz (cut), resonanceQ (reso));
+        if (! open)
+        {
+            // Back in after being fully open: from where the sound is (a low-pass's resting state for it), not from
+            // what it held before.
+            if (vc.filterOpen) vc.filter.s1 = 0.0f, vc.filter.s2 = vc.lastIn;
+            vc.filter.set (cutoffHz (cut), resonanceQ (reso));
+        }
+        vc.filterOpen = open;
         const float level = std::clamp (v (ParamId::volume) * 0.5f + mod[Target::volume], 0.0f, 1.0f) * 2.0f;
         const float p = std::clamp (v (ParamId::pan) + spreadAt * v (ParamId::spread) + mod[Target::pan], -1.0f, 1.0f);
         const float angle = (p + 1.0f) * 0.78539816f;
@@ -1059,6 +1095,7 @@ private:
         for (int n = 0; n < block; ++n)
         {
             float x = vc.out[n] + (vc.aux[n] - vc.out[n]) * aux;
+            vc.lastIn = x;
             if (! open)
                 x = filter == 0 ? vc.filter.process<0> (x) : (filter == 1 ? vc.filter.process<1> (x) : vc.filter.process<2> (x));
             g += gainStep, gl += lStep, gr += rStep;
@@ -1068,6 +1105,9 @@ private:
         }
         vc.vca = gainTo, vc.panL = targetL, vc.panR = targetR;
         vc.peak = std::max (peak, vc.peak * 0.995f);
+        // A key let go before this block: it has played it, now it goes.
+        if (vc.releaseDue)
+            vc.releaseDue = false, release (vc);
 
         // A voice let go ends when it has been silent a while (the gate shut, the envelope done).
         const bool envelopeDone = (amp != Amp::drone && amp != Amp::env) || vc.env1.stage == Adsr::idle;
@@ -1075,9 +1115,11 @@ private:
         {
             if (++vc.silent > 64)
             {
+                // Ended: the envelopes too (a next note with Retrig off would otherwise rise from what was left).
                 vc.active = false;
                 vc.key = -1;
                 vc.peak = 0.0f;
+                vc.env1 = Adsr {}, vc.env2 = Adsr {};
             }
         }
         else
@@ -1101,6 +1143,7 @@ private:
     int stack[stackCapacity] {};
     int stackSize = 0;
     int lastKey = -1, portamentoFrom = -1;
+    float keyVelocity[128] {};
     bool pedal = false, legatoPedal = false;
     float bend = 0.0f, wheel = 0.0f, channelPressure = 0.0f;
 

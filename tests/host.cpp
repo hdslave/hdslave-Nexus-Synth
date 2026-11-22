@@ -676,6 +676,92 @@ void testRetrigger()
     CHECK (strikes == 6);
 }
 
+
+// Edges a review found: values queued over a reset, NOTES with a key played again while it rings, the pedal's notes
+// let go before a held key, notes shorter than a block, a slide off a pedal-held voice, a glide set with its note,
+// unison raised under Mono, the filter coming back in.
+void testEdges()
+{
+    using namespace ParamId;
+    auto hz = [] (int k) { return 440.0 * std::pow (2.0, (k - 69) / 12.0); };
+    // A value the host flushed is kept across a reset.
+    {
+        Instance a;
+        clap_event_param_value e {};
+        e.header = { sizeof (e), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
+        e.param_id = ParamId::frequency, e.note_id = e.port_index = e.channel = e.key = -1, e.value = 12.0;
+        const clap_event_param_value* list[1] = { &e };
+        clap_input_events in { list, [] (const clap_input_events*) { return 1u; },
+                               [] (const clap_input_events* x, uint32_t) { return &static_cast<const clap_event_param_value* const*> (x->ctx)[0]->header; } };
+        a.params->flush (a.plugin, &in, nullptr);
+        a.plugin->reset (a.plugin);
+        const auto out = a.render (24000, sine ({ On (0, 69, 1.0) }));
+        CHECK_NEAR (semis (frequency (out.l, 48000.0, 4800, 24000)), 12.0, 0.02);
+        CHECK (a.value (ParamId::frequency) == 12.0);
+    }
+    // NOTES 2: a key played again while it rings counts as a note: the oldest held one lets go.
+    for (int u : { 1, 3 })
+    {
+        Instance a;
+        const auto out = a.render (120000, sine ({ P (0, notes, 2), P (0, unison, u), P (0, detune, 0), P (0, env1Release, envKnob (150)),
+                                                   On (0, 57, 1.0), On (2400, 60, 1.0), Off (4800, 57), On (4800, 64, 1.0), On (9600, 57, 1.0) }));
+        CHECK (level (out.l, 48000.0, hz (60), 96000, 120000) < 0.002); // B let go
+        CHECK (level (out.l, 48000.0, hz (57), 96000, 120000) > 0.02);
+        CHECK (level (out.l, 48000.0, hz (64), 96000, 120000) > 0.02);
+    }
+    // Past NOTES the pedal's notes go before a key still held.
+    {
+        Instance a;
+        const auto out = a.render (120000, sine ({ P (0, env1Release, envKnob (100)), On (0, 45, 1.0), Midi (100, 0xb0, 64, 127),
+                                                   On (2400, 57, 1.0), Off (3000, 57), On (4800, 60, 1.0), Off (5400, 60), On (7200, 64, 1.0),
+                                                   Off (7800, 64), On (9600, 67, 1.0) }));
+        CHECK (level (out.l, 48000.0, hz (45), 96000, 120000) > 0.02); // the held key stays
+        CHECK (level (out.l, 48000.0, hz (57), 96000, 120000) < 0.002); // the oldest pedal note went
+    }
+    // A note shorter than a block still sounds, in every amp mode (Drone with an instant attack: its 5 ms one cannot
+    // open in a quarter of a millisecond).
+    for (int amp : { Amp::gate, Amp::ping, Amp::env, Amp::drone })
+    {
+        Instance a;
+        const auto out = a.render (24000, { P (0, model, 21), P (0, ampMode, amp), P (0, env1Attack, 0), On (100, 48, 1.0), Off (100, 48) });
+        if (peak (out.l) < 0.01) std::printf ("  amp %d: a zero-length note is silent\n", amp);
+        CHECK (peak (out.l) > 0.01);
+    }
+    // A pedal-held voice slid to a key that is held is that key's now: the pedal lifting does not end it.
+    {
+        Instance a;
+        const auto out = a.render (72000, sine ({ P (0, env1Release, envKnob (30)), Midi (0, 0xb0, 64, 127), On (0, 57, 1.0), Off (2400, 57),
+                                                  Midi (4800, 0xb0, 84, 57), On (4800, 69, 1.0), Off (4800, 57), Midi (24000, 0xb0, 64, 0) }));
+        CHECK (level (out.l, 48000.0, 440.0, 48000, 72000) > 0.02);
+    }
+    // A glide set at the same time as a legato note is the note's.
+    {
+        Instance a;
+        const auto out = a.render (48000, sine ({ P (0, voiceMode, VoiceMode::legato), On (0, 57, 1.0), P (12000, glide, glideKnob (200)),
+                                                  On (12000, 69, 1.0) }));
+        const double at = semis (frequency (out.l, 48000.0, 12000 + 2400, 12000 + 3360));
+        CHECK (at < -6.0); // still on its way 50 ms in
+    }
+    // Mono: unison raised while keys are held; back to the first key, every voice plays at its velocity.
+    {
+        Instance a;
+        const auto one = a.render (96000, sine ({ P (0, voiceMode, VoiceMode::mono), On (0, 69, 1.0) }));
+        Instance b;
+        const auto two = b.render (120000, sine ({ P (0, voiceMode, VoiceMode::mono), On (0, 69, 1.0), On (2400, 72, 1.0), P (4800, unison, 2),
+                                                   Off (9600, 72) }));
+        CHECK (rms (two.l, 24000, 120000) > 1.2 * rms (one.l, 24000, 96000));
+    }
+    // The filter comes back in from where the sound is: no step when cutoff leaves fully open.
+    {
+        Instance a;
+        const auto out = a.render (48000, sine ({ On (0, 69, 1.0), P (24000, cutoff, 0.99) }));
+        double normal = 0.0, at = 0.0;
+        for (size_t i = 12001; i < 20000; ++i) normal = std::max (normal, (double) std::fabs (out.l[i] - out.l[i - 1]));
+        for (size_t i = 24001; i < 26000; ++i) at = std::max (at, (double) std::fabs (out.l[i] - out.l[i - 1]));
+        CHECK (at < 1.5 * normal);
+    }
+}
+
 // Every model plays, finite and bounded, each at its loudest settings too.
 void testModels (const std::string& folder)
 {
@@ -818,6 +904,7 @@ int main (int argc, char** argv)
     run ("modulation", testModulation);
     run ("amp", testAmp);
     run ("retrigger", testRetrigger);
+    run ("edges", testEdges);
     run ("models", [&] { testModels (folder); });
     run ("sleep", testSleep);
     run ("screen", [&] { testScreen (folder); });

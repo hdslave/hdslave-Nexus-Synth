@@ -55,6 +55,8 @@ void NexusVoice::Init (BufferAllocator* allocator)
 
 void NexusVoice::Silence()
 {
+    out_post_processor_.Init(); // the gates shut, their filters empty
+    aux_post_processor_.Init();
     decay_envelope_.Init();
     lpg_envelope_.Init();
     trigger_state_ = false;
