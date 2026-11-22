@@ -16,16 +16,15 @@ constexpr int width = 320, height = 218;
 constexpr uint32_t noParam = 0xffffffffu;
 using Ink = uint32_t;
 
-// Nexus: a deep-sea night, three threads (harmonics cyan, timbre magenta, morph gold) and the module's bank colours.
+// Chrome over black vinyl, with acid yellow, violet and rose signal inks.
 namespace ink
 {
-constexpr Ink bg = 0xff060a12, field = 0xff0b1220, card = 0xff111b2d, selected = 0xff1a2944;
-constexpr Ink rule = 0xff2b3e60, grid = 0xff16223a, faint = 0xff0e1726;
-constexpr Ink muted = 0xff7d90b3, soft = 0xffb6c6e4, paper = 0xffeef4ff, parked = 0xff46557a;
-constexpr Ink cyan = 0xff3ee6ff, magenta = 0xffff4fb8, gold = 0xffffc94a, lime = 0xff9dff5a, red = 0xffff5a4f;
-constexpr Ink orange = 0xffffa23a, violet = 0xff9b7bff, ice = 0xffbff6ff, deep = 0xff0f3a52;
-// The names the shared drawing code uses.
-constexpr Ink amber = gold, hot = ice, ember = magenta, teal = cyan;
+constexpr Ink bg = 0xff09070f, field = 0xff100c1d, card = 0xff191524, selected = 0xff292537;
+constexpr Ink rule = 0xff51485e, grid = 0xff332a43, faint = 0xff20172f;
+constexpr Ink muted = 0xffb4a9c6, soft = 0xffe2dceb, paper = 0xfffaf7ff, parked = 0xff91849e;
+constexpr Ink acid = 0xffd5ff28, lilac = 0xffb79aff, pink = 0xffff67c9;
+constexpr Ink gold = 0xffffc46b, orange = 0xffff965d, lime = acid;
+constexpr Ink violet = lilac, ice = 0xffdeddfc, deep = 0xff77703c;
 }
 
 inline Ink mix (Ink a, Ink b, int t256) // a toward b by t/256

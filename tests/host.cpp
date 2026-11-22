@@ -861,6 +861,13 @@ void testScreen (const std::string& folder)
         now += 50;
         CHECK (paint()); // sounding: a new frame
         shot (names[p]);
+        // A moving panel drawn at its own origin must match the same panel in the full page.
+        a.render (1920, {});
+        now += 50;
+        paint();
+        const auto partial = pixels;
+        paint (true);
+        CHECK (partial == pixels);
         in (MELODEE_SCREEN_NUDGE, 1);
     }
     // The legend with Shift.

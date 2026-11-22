@@ -17,7 +17,9 @@
 #include "engine.h"
 #include "params.h"
 #include "ui/page.h"
+#include "ui/wordmark.h"
 
+#include <array>
 #include <atomic>
 #include <iterator>
 
@@ -124,14 +126,14 @@ public:
         }
         bool drew = false;
         if (chrome || params || voicesMoved)
-            drew |= picture.region<320, 26> (pixels, stride, whole, 0, 0, [&] (Raster& r) { header (r, sounding, gated); });
+            drew |= picture.region<320, headerH> (pixels, stride, whole, 0, 0, [&] (Raster& r) { header (r, sounding, gated); });
         // The whole body when what it shows changed; between, only the pictures that move.
         if (chrome || params)
-            drew |= picture.region<320, 142> (pixels, stride, whole, 0, 26, [&] (Raster& r) { body (r, sounding, gated); });
+            drew |= picture.region<320, 142> (pixels, stride, whole, 0, headerH, [&] (Raster& r) { body (r, sounding, gated); });
         else if (frame || voicesMoved)
             drew |= moving (pixels, stride, sounding, gated);
         if (chrome || params || pots || h.shift != lastHost.shift || h.accent != lastHost.accent)
-            drew |= picture.region<320, 48> (pixels, stride, whole, 0, 170, [&] (Raster& r) {
+            drew |= picture.region<320, footerH> (pixels, stride, whole, 0, footerY, [&] (Raster& r) {
                 if (h.shift) legend (r);
                 else cards (r, h);
             });
@@ -144,10 +146,12 @@ public:
 
 private:
     // --- Layout -----------------------------------------------------------------------------------------------------
-    enum Style : uint8_t { plain, grid, matrix, compact }; // grid: the model's bank grid
+    enum Style : uint8_t { plain, grid, macro, matrix, compact }; // grid: the model's bank grid
     struct Cell { uint32_t id; int16_t x, y, w, h; Style style; const char* label; };
     struct Layout { const Cell* cells; int count; };
 
+    static constexpr int headerH = 41, footerY = headerH + 142, footerH = hdui::height - footerY;
+    static constexpr int scopeX = 102, scopeY = 2, scopeW = 216, scopeH = 49;
     static constexpr int16_t W = 50, H = 44, row0 = 2, row1 = 48, row2 = 94;
     static constexpr int16_t col (int i) { return (int16_t) (2 + 52 * i); }
 
@@ -155,13 +159,13 @@ private:
     {
         using namespace ParamId;
         static const Cell plaitsCells[] = {
-            { model, 2, row0, 124, H, grid, "MODEL" },
-            { frequency, 128, row0, 47, H, plain, "FREQ" }, { harmonics, 175, row0, 47, H, plain, "HARM" },
-            { timbre, 222, row0, 47, H, plain, "TIMBRE" }, { morph, 269, row0, 47, H, plain, "MORPH" },
-            { timbreAtt, col (0), row1, W, H, plain, "T ATT" }, { fmAtt, col (1), row1, W, H, plain, "FM ATT" },
-            { morphAtt, col (2), row1, W, H, plain, "M ATT" }, { ampMode, col (3), row1, W, H, plain, "AMP" },
-            { lpgColor, col (4), row1, W, H, plain, "COLOR" }, { lpgDecay, col (5), row1, W, H, plain, "DECAY" },
-            { auxMix, col (0), row2, W, 46, plain, "AUX" },
+            { model, 2, 2, 98, 49, grid, "MODEL" },
+            { frequency, 2, 53, 77, 42, macro, "FREQ" }, { harmonics, 81, 53, 77, 42, macro, "HARM" },
+            { timbre, 160, 53, 78, 42, macro, "TIMBRE" }, { morph, 240, 53, 78, 42, macro, "MORPH" },
+            { timbreAtt, 2, 97, 43, H, plain, "T ATT" }, { fmAtt, 47, 97, 43, H, plain, "FM ATT" },
+            { morphAtt, 92, 97, 43, H, plain, "M ATT" }, { ampMode, 137, 97, 43, H, plain, "AMP" },
+            { lpgColor, 182, 97, 43, H, plain, "COLOR" }, { lpgDecay, 227, 97, 43, H, plain, "DECAY" },
+            { auxMix, 272, 97, 46, H, plain, "AUX" },
         };
         static const Cell voiceCells[] = {
             { voiceMode, col (0), row0, W, H, plain, "MODE" }, { notes, col (1), row0, W, H, plain, "NOTES" },
@@ -233,12 +237,6 @@ private:
     int ival (uint32_t id) const { return (int) seen[id]; }
     void formatted (uint32_t id, char* s, uint32_t n) const { formatParam (paramTable[id], val (id), s, n); }
 
-    static Ink bankInk (int model)
-    {
-        using namespace hdui;
-        return model < 8 ? ink::orange : (model < 16 ? ink::lime : ink::red);
-    }
-
     static const char* sourceShort (int s)
     {
         static const char* const n[] = { "OFF", "LFO 1", "LFO 2", "ENV 1", "ENV 2", "CYCLE", "RANDOM", "VELO", "AFTER", "WHEEL" };
@@ -284,29 +282,31 @@ private:
     void header (const Raster& r, uint32_t sounding, uint32_t gated) const
     {
         using namespace hdui;
-        r.large (6, 1, "NEXUS", ink::cyan, ink::magenta);
-        // Three threads braided.
-        const Ink threads[3] = { ink::cyan, ink::magenta, ink::gold };
-        for (int t = 0; t < 3; ++t)
-            for (int x = 0; x < 26; ++x)
-            {
-                const float a = (float) x / 26.0f * 6.2831853f + (float) t * 2.0943951f;
-                const int y = 12 + (int) std::lround (6.0f * std::sin (a));
-                r.dot (84 + x, y, threads[t]), r.dot (84 + x, y + 1, mix (threads[t], ink::bg, 128));
-            }
+        for (int y = 0; y < wordmark::height; ++y)
+            for (int x = 0; x < wordmark::width; ++x)
+                r.px[y * r.w + x] = wordmark::palette[wordmark::rows[y][x] - ' '];
+
         static const char* const names[pageCount] = { "PLAITS", "VOICE", "ENV", "LFO", "CYCLE", "MOD", "ASSIGN" };
-        r.text (118, 3, names[page], ink::paper);
+        // A slashed navigation strip. Its seven cuts double as the page indicator.
+        for (int y = 0; y < 15; ++y)
+        {
+            const int left = 170 + (14 - y) / 2;
+            r.box (left, 2 + y, 318 - left, 1, ink::acid);
+        }
+        r.text (180, 6, names[page], ink::bg);
         for (int i = 0; i < pageCount; ++i)
-            i == page ? r.box (118 + i * 8, 18, 5, 3, ink::cyan) : r.box (119 + i * 8, 19, 3, 1, ink::rule);
+            for (int j = 0; j < 6; ++j)
+                r.box (256 + i * 8 + (5 - j) / 2, 7 + j, i == page ? 6 : 2, 1, ink::bg);
+
         const int m = std::clamp (ival (ParamId::model), 0, modelCount - 1);
-        r.right (314, 3, modelChoices[m], bankInk (m));
+        r.text (172, 25, modelChoices[m], ink::paper);
         for (int i = 0; i < maxVoices; ++i)
         {
-            const int x = 261 + 7 * i;
             const bool on = (sounding >> i) & 1u, held = (gated >> i) & 1u;
-            r.box (x, 17, 5, 4, held ? ink::cyan : (on ? ink::deep : ink::grid));
+            const int x = 286 + 4 * i;
+            r.box (x, 25, 2, 7, held ? ink::acid : (on ? ink::lilac : ink::grid));
         }
-        r.box (4, 24, 312, 1, ink::rule);
+        r.box (2, 40, 316, 1, ink::rule);
     }
 
     // --- Body ---------------------------------------------------------------------------------------------------------
@@ -317,7 +317,7 @@ private:
         const int f = std::clamp (focus[page], 0, l.count - 1);
         switch (page)
         {
-            case plaitsPage: scope (r, 56, row2, 262, 46); break;
+            case plaitsPage: scope (r, scopeX, scopeY); break;
             case voicePage: voices (r, 210, row1, 108, H, sounding, gated), filterCurve (r, 158, row2, 160, 46); break;
             case envPage:
                 envCurve (r, 2, row2, 156, 46, 0, env1Shown);
@@ -335,11 +335,11 @@ private:
     // The pictures that move on the page shown, each redrawn alone (body() draws them in place).
     bool moving (uint32_t* pixels, int stride, uint32_t sounding, uint32_t gated)
     {
-        constexpr int top = 26;
+        constexpr int top = headerH;
         bool drew = false;
         switch (page)
         {
-            case plaitsPage: drew |= picture.region<262, 46> (pixels, stride, false, 56, top + row2, [&] (Raster& r) { scope (r, 0, 0, 262, 46); }); break;
+            case plaitsPage: drew |= picture.region<scopeW, scopeH> (pixels, stride, false, scopeX, top + scopeY, [&] (Raster& r) { scope (r, 0, 0); }); break;
             case voicePage:
                 drew |= picture.region<108, H> (pixels, stride, false, 210, top + row1, [&] (Raster& r) { voices (r, 0, 0, 108, H, sounding, gated); });
                 drew |= picture.region<160, 46> (pixels, stride, false, 158, top + row2, [&] (Raster& r) { filterCurve (r, 0, 0, 160, 46); });
@@ -357,7 +357,7 @@ private:
                 drew |= picture.region<156, 46> (pixels, stride, false, 162, top + row2, [&] (Raster& r) { randomTrace (r, 0, 0, 156, 46); });
                 drew |= picture.region<W, H> (pixels, stride, false, col (5), top + row0, [&] (Raster& r) { cycleNow (r, 0, 0, W, H); });
                 break;
-            case modPage: drew |= picture.region<44, 126> (pixels, stride, false, 2, top + 14, [&] (Raster& r) { modMeters (r, 0, -14); }); break;
+            case modPage: drew |= picture.region<44, 126> (pixels, stride, false, 2, top + 14, [&] (Raster& r) { modMeters (r, -2, -14); }); break;
             default:
             {
                 // The sources' cells, with their levels.
@@ -378,19 +378,59 @@ private:
         return drew;
     }
 
+    static void plate (const Raster& r, const Cell& c, bool focused, bool edited)
+    {
+        using namespace hdui;
+        const Ink key = edited ? ink::pink : ink::acid;
+        r.box (c.x, c.y, c.w, c.h, focused ? ink::selected : ink::card);
+        r.box (c.x, c.y, c.w, 1, focused ? key : ink::rule);
+        if (focused)
+        {
+            r.box (c.x, c.y, 2, c.h, key);
+            r.box (c.x + c.w - 6, c.y + c.h - 1, 6, 1, key);
+            r.box (c.x + c.w - 1, c.y + c.h - 4, 1, 4, key);
+        }
+        if (edited) r.frame (c.x, c.y, c.w, c.h, key);
+    }
+
+    void macroCell (const Raster& r, const Cell& c, bool focused, bool edited) const
+    {
+        using namespace hdui;
+        const Ink color = accentFor (c.id);
+        const Ink strip = focused ? (edited ? ink::pink : ink::acid) : ink::grid;
+        r.box (c.x + 1, c.y + 1, c.w - 2, 12, strip);
+        r.text (c.x + 4, c.y + 3, c.label, focused ? ink::bg : ink::paper, 6);
+        const int m = std::clamp (ival (ParamId::model), 0, modelCount - 1);
+        const ModelRole& roles = modelRoles[m];
+        const char* role = "Pitch";
+        if (c.id == ParamId::harmonics) role = roles.harmonics;
+        if (c.id == ParamId::timbre) role = roles.timbre;
+        if (c.id == ParamId::morph) role = roles.morph;
+
+        const Param& p = paramTable[c.id];
+        const float unit = (val (c.id) - p.min) / (p.max - p.min);
+        const bool longRole = std::strlen (role) > 8;
+        knob (r, c.x + 14, c.y + (longRole ? 22 : 27), longRole ? 8 : 10, unit, p.min < 0, color);
+        char value[24];
+        formatted (c.id, value, sizeof (value));
+        r.right (c.x + c.w - 3, c.y + 17, value, ink::paper, 6);
+        if (longRole) valueText (r, c.x + c.w / 2, c.y + 32, c.w - 4, role, color);
+        else r.right (c.x + c.w - 3, c.y + 30, role, color, 6);
+    }
+
     // A cell: its label, a knob, a switch or a choice, and its value.
     void cell (const Raster& r, const Cell& c, bool focused, bool edited) const
     {
         using namespace hdui;
         const Param& p = paramTable[c.id];
         if (c.style == matrix) { matrixCell (r, c, focused, edited); return; }
-        r.box (c.x, c.y, c.w, c.h, focused ? ink::selected : ink::card);
-        if (focused) r.box (c.x, c.y, 2, c.h, edited ? ink::gold : ink::cyan);
-        if (edited) r.frame (c.x, c.y, c.w, c.h, ink::gold);
+        plate (r, c, focused, edited);
         if (c.style == compact) { compactCell (r, c, focused); return; }
-        if (c.style == grid) { modelCell (r, c, focused); return; }
+        if (c.style == grid) { modelCell (r, c, focused, edited); return; }
+        if (c.style == macro) { macroCell (r, c, focused, edited); return; }
         const int mid = c.x + c.w / 2;
-        r.centre (mid, c.y + 2, c.label, focused ? ink::paper : ink::muted);
+        if (focused) r.box (c.x + 1, c.y + 1, c.w - 2, 11, edited ? ink::pink : ink::acid);
+        r.centre (mid, c.y + 3, c.label, focused ? ink::bg : ink::muted, 6);
         char s[24];
         formatted (c.id, s, sizeof (s));
         const Ink accent = accentFor (c.id);
@@ -433,14 +473,14 @@ private:
     {
         using namespace hdui;
         using namespace ParamId;
-        if (id == harmonics) return ink::cyan;
-        if (id == timbre || id == timbreAtt) return ink::magenta;
-        if (id == morph || id == morphAtt) return ink::gold;
+        if (id == harmonics) return ink::acid;
+        if (id == timbre || id == timbreAtt) return ink::pink;
+        if (id == morph || id == morphAtt) return ink::lilac;
         if (id == ampMode || id == lpgColor || id == lpgDecay) return ink::orange;
-        if (id >= env1Attack && id <= env1Retrig) return ink::cyan;
-        if (id >= env2Attack && id <= env2Retrig) return ink::magenta;
-        if (id >= lfo1Shape && id <= lfo1Phase) return ink::cyan;
-        if (id >= lfo2Shape && id <= lfo2Phase) return ink::magenta;
+        if (id >= env1Attack && id <= env1Retrig) return ink::acid;
+        if (id >= env2Attack && id <= env2Retrig) return ink::pink;
+        if (id >= lfo1Shape && id <= lfo1Phase) return ink::acid;
+        if (id >= lfo2Shape && id <= lfo2Phase) return ink::pink;
         if (id >= cycRise && id <= cycRetrig) return ink::gold;
         if (id >= rndMode && id <= rndRetrig) return ink::lime;
         if (id == cutoff || id == resonance || id == filterMode) return ink::violet;
@@ -453,32 +493,47 @@ private:
         using namespace hdui;
         unit = std::clamp (unit, 0.0f, 1.0f);
         constexpr int steps = 40;
-        const float start = 2.35619449f, sweep = 4.71238898f; // from 135 degrees, clockwise 270
-        // The track's points, worked out once (every knob has the same radius).
-        static int8_t px[steps + 1], py[steps + 1];
-        static int madeFor = -1;
-        if (madeFor != radius)
+        static constexpr float start = 2.35619449f, sweep = 4.71238898f; // from 135 degrees, clockwise 270
+        struct Arc
         {
-            for (int i = 0; i <= steps; ++i)
+            int8_t x[steps + 1], y[steps + 1];
+            explicit Arc (int size)
             {
-                const float a = start + sweep * (float) i / steps;
-                px[i] = (int8_t) std::lround ((float) radius * std::cos (a)), py[i] = (int8_t) std::lround ((float) radius * std::sin (a));
+                for (int i = 0; i <= steps; ++i)
+                {
+                    const float a = start + sweep * (float) i / steps;
+                    x[i] = (int8_t) std::lround (size * std::cos (a));
+                    y[i] = (int8_t) std::lround (size * std::sin (a));
+                }
             }
-            madeFor = radius;
-        }
+        };
+        static const Arc arcs[] = { Arc (8), Arc (9), Arc (10) };
+        const Arc& arc = arcs[radius - 8];
+        // A chrome cap with a curved horizon reflected across its face.
+        static constexpr char cap[][14] = {
+            "    56654    ", "  568888764  ", " 57788887764 ", " 67888776655 ",
+            "4577776655543", "2456655544432", "1123444433221", "2111222222212",
+            "3221111111233", " 43322212344 ", " 54443334554 ", "  665555664  ", "    45554    "
+        };
+        static constexpr Ink metal[] = { ink::bg, 0xff282235, 0xff42374e, 0xff574966, 0xff786786,
+                                        0xff9e89ae, 0xffbfb3d0, 0xffe6dfef, ink::paper };
+        for (int j = 0; j < 13; ++j)
+            for (int i = 0; i < 13; ++i)
+                if (cap[j][i] != ' ') r.dot (cx + i - 6, cy + j - 6, metal[cap[j][i] - '0']);
         const float from = bipolar ? 0.5f : 0.0f;
         const Ink shade = mix (accent, ink::bg, 100);
         for (int i = 0; i <= steps; ++i)
         {
             const float t = (float) i / steps;
             const bool lit = (t >= std::min (from, unit) && t <= std::max (from, unit));
-            r.dot (cx + px[i], cy + py[i], lit ? accent : ink::rule);
-            r.dot (cx + px[i], cy + py[i] + 1, lit ? shade : ink::grid);
+            r.dot (cx + arc.x[i], cy + arc.y[i], lit ? accent : ink::rule);
+            r.dot (cx + arc.x[i], cy + arc.y[i] + 1, lit ? shade : ink::grid);
         }
-        const float a = start + sweep * unit;
-        for (int k = 2; k <= radius - 2; ++k)
-            r.dot (cx + (int) std::lround ((float) k * std::cos (a)), cy + (int) std::lround ((float) k * std::sin (a)), ink::paper);
-        r.box (cx - 1, cy - 1, 2, 2, ink::soft);
+        const int step = (int) std::lround (unit * steps);
+        const int dx = arc.x[step], dy = arc.y[step];
+        r.line (cx, cy + 1, cx + dx * 3 / 4, cy + dy * 3 / 4 + 1, ink::bg);
+        r.line (cx, cy, cx + dx * 3 / 4, cy + dy * 3 / 4, ink::paper);
+        r.dot (cx + dx, cy + dy, accent);
     }
 
     // Choices drawn as pictures: LFO shapes, the cycle's shape, the filter's type.
@@ -546,25 +601,27 @@ private:
         return false;
     }
 
-    // MODEL: the three banks as the module shows them, the one playing lit, and its name.
-    void modelCell (const Raster& r, const Cell& c, bool focused) const
+    // Model index and bank lamps share a printed ticket.
+    void modelCell (const Raster& r, const Cell& c, bool focused, bool edited) const
     {
         using namespace hdui;
         const int m = std::clamp (ival (ParamId::model), 0, modelCount - 1);
-        r.text (c.x + 6, c.y + 2, c.label, focused ? ink::paper : ink::muted);
-        char n[8];
-        std::snprintf (n, sizeof (n), "%d/24", m + 1);
-        r.right (c.x + c.w - 4, c.y + 2, n, ink::muted);
+        const Ink stock = focused ? (edited ? ink::pink : ink::acid) : ink::lilac;
+        r.box (c.x, c.y, c.w, c.h, stock);
+        r.text (c.x + 5, c.y + 4, c.label, ink::bg, 6);
+        r.right (c.x + c.w - 4, c.y + 4, "/24", ink::bg, 6);
+        r.dotted (c.x + 4, c.y + 16, c.x + c.w - 4, c.y + 16, ink::bg, 3);
+        char number[8];
+        std::snprintf (number, sizeof (number), "%02d", m + 1);
+        r.large (c.x + 4, c.y + 23, number, ink::bg, ink::bg, 14);
         for (int i = 0; i < modelCount; ++i)
         {
-            const int bank = i / 8, k = i % 8;
-            const int x = c.x + 6 + k * 14, y = c.y + 15 + bank * 6;
-            const Ink b = bankInk (i);
-            r.box (x, y, 11, 4, i == m ? b : mix (b, ink::bg, 205));
+            const int x = c.x + 40 + i % 8 * 7, y = c.y + 23 + i / 8 * 7;
+            if (i == m) r.box (x - 1, y - 1, 6, 5, ink::bg);
+            else if (i / 8 == m / 8) r.frame (x, y, 4, 3, ink::bg);
+            else r.box (x, y + 1, 4, 1, mix (stock, ink::bg, 158));
         }
-        const int rows[3] = { c.y + 15, c.y + 21, c.y + 27 };
-        r.box (c.x + 4, rows[m / 8] + 1, 1, 2, bankInk (m));
-        r.text (c.x + 6, c.y + 32, modelChoices[m], bankInk (m));
+        if (focused) r.frame (c.x + 1, c.y + 1, c.w - 2, c.h - 2, ink::bg);
     }
 
     // An assign source or target: its short name, the slot's number.
@@ -577,7 +634,7 @@ private:
         const char* name = isSource ? sourceShort (v) : targetShort (v);
         char tag[4] = { isSource ? 'S' : 'D', char ('1' + slot), 0, 0 };
         r.text (c.x + 4, c.y + 2, tag, ink::muted, 6);
-        const Ink accent = v == 0 ? ink::parked : (isSource ? ink::cyan : ink::gold);
+        const Ink accent = v == 0 ? ink::parked : (isSource ? ink::acid : ink::gold);
         r.right (c.x + c.w - 3, c.y + 2, name, focused ? ink::paper : accent, 6);
         // The source's level now, under it.
         if (isSource)
@@ -614,13 +671,11 @@ private:
         using namespace hdui;
         const bool on = val (c.id + 1) >= 0.5f;
         const float a = val (c.id);
-        r.box (c.x, c.y, c.w, c.h, focused ? ink::selected : ink::card);
-        if (focused) r.box (c.x, c.y, 2, c.h, edited ? ink::gold : ink::cyan);
-        if (edited) r.frame (c.x, c.y, c.w, c.h, ink::gold);
+        plate (r, c, focused, edited);
         const int w = c.w - 10, left = c.x + 5, mid = left + w / 2, y = c.y + c.h - 9;
         r.box (left, y, w, 3, ink::grid);
         r.box (mid, y - 2, 1, 7, ink::rule);
-        const Ink fill = ! on ? ink::parked : (a >= 0.0f ? ink::cyan : ink::magenta);
+        const Ink fill = ! on ? ink::parked : (a >= 0.0f ? ink::acid : ink::pink);
         const int at = mid + (int) std::lround (a * (float) (w / 2));
         if (a != 0.0f) r.box (std::min (mid, at), y, std::abs (at - mid) + 1, 3, fill);
         char s[16];
@@ -635,7 +690,7 @@ private:
         for (int t = 0; t < routeTargets; ++t)
         {
             static const char* const n[] = { "PITCH", "HARM", "TIMBRE", "MORPH" };
-            static const Ink inks[] = { ink::ice, ink::cyan, ink::magenta, ink::gold };
+            static const Ink inks[] = { ink::ice, ink::acid, ink::pink, ink::lilac };
             r.centre (48 + 68 * t + 33, 1, n[t], inks[t]);
         }
         modMeters (r, 0, 0);
@@ -655,16 +710,16 @@ private:
             const int mid = x + 22;
             const int at = mid + (int) std::lround (std::clamp (levels[s], -1.0f, 1.0f) * 18.0f);
             r.box (x + 4, y + 21, 36, 2, ink::grid);
-            r.box (std::min (mid, at), y + 21, std::abs (at - mid) + 1, 2, ink::cyan);
+            r.box (std::min (mid, at), y + 21, std::abs (at - mid) + 1, 2, ink::acid);
         }
     }
 
     void assignFrame (const Raster& r) const
     {
         using namespace hdui;
-        r.text (6, 6, "SRC", ink::muted);
-        r.text (36, 14, "DST", ink::muted);
-        r.line (4, 2, 62, 24, ink::rule);
+        r.line (3, 2, 62, 24, ink::rule);
+        r.text (5, 13, "SRC", ink::muted, 6);
+        r.text (39, 3, "DST", ink::muted, 6);
     }
 
     // --- Pictures -----------------------------------------------------------------------------------------------------
@@ -673,33 +728,79 @@ private:
         using namespace hdui;
         r.box (x, y, w, h, ink::field);
         r.frame (x, y, w, h, ink::grid);
-        if (title != nullptr) r.text (x + 4, y + 2, title, ink::muted);
+        r.box (x + 1, y, w / 4, 1, ink::rule);
+        for (int gx = 12; gx < w - 3; gx += 14)
+            for (int gy = 17; gy < h - 3; gy += 8)
+                r.dot (x + gx, y + gy, ink::grid);
+        if (title != nullptr) r.text (x + 4, y + 3, title, ink::muted);
     }
 
-    // PLAITS: what plays, and what HARMONICS, TIMBRE and MORPH do in this model.
-    void scope (const Raster& r, int x, int y, int w, int h) const
+    // Screen-printed checker floor behind the measured output. Draw the fixed perspective once.
+    static const std::array<Ink, scopeW * scopeH>& scopeGlass()
     {
         using namespace hdui;
-        panel (r, x, y, w, h, nullptr);
-        const int m = std::clamp (ival (ParamId::model), 0, modelCount - 1);
-        const ModelRole& role = modelRoles[m];
-        int tx = r.text (x + 4, y + 2, "H ", ink::muted);
-        tx = r.text (tx, y + 2, role.harmonics, ink::cyan, 6);
-        tx = r.text (tx + 6, y + 2, "T ", ink::muted);
-        tx = r.text (tx, y + 2, role.timbre, ink::magenta, 6);
-        tx = r.text (tx + 6, y + 2, "M ", ink::muted);
-        r.text (tx, y + 2, role.morph, ink::gold, 6);
-        const int top = y + 15, high = h - 17, mid = top + high / 2;
-        r.box (x + 2, mid, w - 4, 1, ink::grid);
+        static const auto glass = [] {
+            std::array<Ink, scopeW * scopeH> pixels {};
+            Raster r { pixels.data(), scopeW, scopeH };
+            r.box (0, 0, r.w, r.h, ink::field);
+            for (int y = 0; y < r.h; ++y)
+                for (int x = 0; x < r.w; ++x)
+                {
+                    const float u = (float) x / (r.w - 1);
+                    const float depth = (float) y - (29.0f - 16.0f * u + 5.0f * std::sin (5.8f * u));
+                    if (depth <= 0.0f) continue;
+                    const float z = 12.0f / (depth + 3.5f);
+                    const int lane = (int) std::floor ((u - 0.32f) * z * 32.0f + 0.9f * std::sin (7.2f * u));
+                    const int row = (int) std::floor (3.9f * z);
+                    if ((lane + row) % 2 == 0)
+                        r.dot (x, y, mix (ink::field, 0xff8d58bf, (int) std::min (139.0f, depth * 5.0f)));
+                }
+            // An orbit around the scope's activity lamp.
+            constexpr int cx = scopeW - 27, cy = 10;
+            for (int i = 0; i < 120; ++i)
+            {
+                const float angle = i * 6.2831853f / 120.0f;
+                const float u = std::cos (angle), v = std::sin (angle);
+                const int px = cx + (int) std::lround (21.0f * u);
+                const int py = cy + (int) std::lround (3.0f * v - 6.0f * u);
+                r.dot (px, py, v > 0.0f ? ink::lilac : ink::rule);
+            }
+            r.disc (cx, cy, 6, ink::rule);
+            r.disc (cx - 1, cy - 1, 5, ink::lilac);
+            r.disc (cx, cy + 1, 4, ink::field);
+            r.line (cx - 15, cy + 5, cx + 15, cy - 4, ink::soft);
+            r.box (cx + 3, cy - 5, 5, 1, ink::paper);
+            r.box (cx + 5, cy - 7, 1, 5, ink::paper);
+            r.frame (0, 0, r.w, r.h, ink::rule);
+            r.text (5, 4, "OUTPUT", ink::soft, 6);
+            return pixels;
+        }();
+        return glass;
+    }
+
+    void scope (const Raster& r, int x, int y) const
+    {
+        using namespace hdui;
+        const auto& glass = scopeGlass();
+        for (int j = 0; j < scopeH; ++j)
+            std::copy_n (glass.data() + j * scopeW, scopeW, r.px + (y + j) * r.w + x);
+        const int top = y + 13, high = scopeH - 16, mid = top + high / 2;
+        r.dotted (x + 3, mid, x + scopeW - 4, mid, ink::muted, 4);
         if (! animated) return;
+        r.box (x + scopeW - 29, y + 9, 4, 2, ink::acid);
         const float scale = (float) (high / 2 - 1) / std::max (scopeGain, 0.02f);
-        const int cols = w - 4;
-        int last = -1;
+        const int cols = scopeW - 6;
+        int last = mid;
         for (int i = 0; i < cols; ++i)
         {
             const int k = i * scopeSamples / cols;
             const int py = std::clamp (mid - (int) std::lround (scopeTrace[k] * scale), top, top + high - 1);
-            if (last >= 0) r.line (x + 2 + i - 1, last, x + 2 + i, py, ink::cyan);
+            const int xx = x + 3 + i;
+            if (i)
+            {
+                r.line (xx - 1, last + 1, xx, py + 1, ink::deep);
+                r.line (xx - 1, last, xx, py, ink::acid);
+            }
             last = py;
         }
     }
@@ -721,7 +822,7 @@ private:
             {
                 const float level = std::sqrt (std::clamp (levelShown[i] / 0.4f, 0.0f, 1.0f));
                 const int fill = std::max (1, (int) std::lround (level * (float) bh));
-                r.box (bx, by + bh - fill, 4, fill, g ? ink::cyan : ink::deep);
+                r.box (bx, by + bh - fill, 4, fill, g ? ink::acid : ink::deep);
             }
             const int key = keyShown[i];
             if (! g || key < 0) continue;
@@ -771,7 +872,7 @@ private:
         using namespace ParamId;
         const uint32_t o = which == 0 ? env1Attack : env2Attack;
         panel (r, x, y, w, h, which == 0 ? "ENV 1" : "ENV 2");
-        const Ink c = which == 0 ? ink::cyan : ink::magenta;
+        const Ink c = which == 0 ? ink::acid : ink::pink;
         const float a = val (o), d = val (o + 1), s = val (o + 2), rel = val (o + 3);
         const int top = y + 13, high = h - 16, base = top + high;
         const float room = (float) (w - 30);
@@ -814,7 +915,7 @@ private:
         using namespace ParamId;
         const uint32_t o = which == 0 ? lfo1Shape : lfo2Shape;
         panel (r, x, y, w, h, which == 0 ? "LFO 1" : "LFO 2");
-        const Ink c = which == 0 ? ink::cyan : ink::magenta;
+        const Ink c = which == 0 ? ink::acid : ink::pink;
         char rate[24];
         if (val (o + 2) >= 0.5f) std::snprintf (rate, sizeof (rate), "%s", divChoices[std::clamp (ival (o + 3), 0, 10)]);
         else formatted (o + 1, rate, sizeof (rate));
@@ -932,25 +1033,31 @@ private:
     void cards (const Raster& r, const Host& h) const
     {
         using namespace hdui;
-        const Ink track = h.accent ? (h.accent | 0xff000000u) : ink::cyan;
+        const Ink track = h.accent ? mix (h.accent | 0xff000000u, ink::paper, 52) : ink::acid;
         const Layout l = layout (page);
         for (int k = 0; k < 3; ++k)
         {
             const int x = 4 + 105 * k;
             const int c = focus[page] + k;
-            r.box (x, 3, 102, 42, ink::card);
+            r.box (x, 1, 102, 32, ink::field);
+            const Ink badge = k == 0 ? ink::acid : ink::lilac;
+            r.box (x, 1, 102, 1, ink::rule);
+            r.box (x, 2, 16, 11, badge);
             const char tag[] = { 'K', char ('1' + k), 0 };
-            r.text (x + 4, 6, tag, ink::muted);
+            r.text (x + 2, 4, tag, ink::bg, 6);
             if (c >= l.count) continue;
             const uint32_t id = l.cells[c].id;
             const auto& p = paramTable[id];
             char title[32];
             cardTitle (l.cells[c], title, sizeof (title));
-            r.text (x + 22, 6, title, ink::paper, (int) std::strlen (title) * 7 > 78 ? 6 : 7);
+            const int titleRoom = 82;
+            const int titleLength = (int) std::strlen (title);
+            r.text (x + 19, 4, title, ink::soft, titleLength * 7 <= titleRoom ? 7 : (titleLength * 6 <= titleRoom ? 6 : 5));
             char s[32];
             formatted (id, s, sizeof (s));
-            r.text (x + 4, 20, s, l.cells[c].style == matrix && val (id + 1) < 0.5f ? ink::parked : ink::ice);
-            const int start = x + 5, w = 92, rail = 37;
+            r.text (x + 3, 17, s, l.cells[c].style == matrix && val (id + 1) < 0.5f ? ink::parked : ink::paper,
+                    (int) std::strlen (s) * 7 <= 98 ? 7 : 6);
+            const int start = x + 3, w = 96, rail = 30;
             const float unit = (val (id) - p.min) / (p.max - p.min);
             const int at = start + (int) std::lround (unit * (float) (w - 1));
             r.box (start, rail, w, 2, ink::rule);
@@ -1002,11 +1109,11 @@ private:
         for (int k = 0; k < 3; ++k)
         {
             const int x = 4 + 105 * k;
-            r.box (x, 3, 102, 42, ink::field);
-            r.box (x, 3, 2, 42, ink::cyan);
-            r.text (x + 6, 6, top[k], ink::muted);
-            r.text (x + 6, 19, plain[k], ink::paper);
-            r.text (x + 6, 31, shifted[k], ink::soft, 6);
+            r.box (x, 1, 102, 33, ink::field);
+            r.box (x, 1, 102, 10, ink::lilac);
+            r.text (x + 3, 2, top[k], ink::bg, 6);
+            r.text (x + 3, 13, plain[k], ink::paper, 6);
+            r.text (x + 3, 24, shifted[k], ink::muted, 6);
         }
     }
 

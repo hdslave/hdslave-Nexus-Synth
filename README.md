@@ -29,11 +29,13 @@ instead.
 
 ## Playing it
 
-Seven pages, Minus and Plus to turn them:
+![Nexus PLAITS page with Wavetable selected](docs/nexus-plaits.png)
+
+Use Minus and Plus to move through the seven pages. [Watch the screen tour in Melodee](docs/nexus-pages.gif).
 
 | Page | What it holds |
 |---|---|
-| PLAITS | MODEL (the module's three banks as a grid of lights, the one playing lit), FREQ, HARMONICS, TIMBRE, MORPH; the attenuverters (T ATT, FM ATT, M ATT); the gate (AMP, COLOR, DECAY); AUX; a scope of what plays, with what the three macros do in this model |
+| PLAITS | Model number and bank grid beside the live output scope. FREQ, HARM, TIMBRE and MORPH each show their value, and the three macros show their role in the current model. The bottom row holds T ATT, FM ATT, M ATT, AMP, COLOR, DECAY and AUX. |
 | VOICE | MODE, NOTES, UNISON, DETUNE, SPREAD, PAN, GLIDE, BEND, VEL (curve), AT (curve), FILTER, CUTOFF, RESO; the eight voices at work and the keys held; the filter's response and where a modulated cutoff is |
 | ENV | Env 1 and Env 2 (attack, decay, sustain, release, retrigger), each drawn with where it is now; VOLUME; TRIG (the retrigger rate) |
 | LFO | LFO 1 and 2: shape, rate, phase, sync, division, retrigger, per voice; each drawn, moving while it plays |
@@ -194,7 +196,7 @@ Speech: 4.4 % of a core) to 650,000 (Particle: 13.5 %); most models sit between 
 At other host rates the resampler adds a little: the pad costs 97 million instructions a second at 44.1 kHz (Melodee's
 default) against 90 million at 48 kHz, where samples pass as they are. Silent, the resampler skips its work.
 
-A page frame while it plays costs about 98,000 instructions. Silent voices cost nothing. When everything is silent,
+The PLAITS page averaged about 99,000 instructions per painted frame in the four-second pad benchmark. Silent voices cost nothing. When everything is silent,
 the plug-in tells the host it may sleep.
 
 ## Licence
