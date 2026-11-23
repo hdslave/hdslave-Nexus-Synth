@@ -452,7 +452,10 @@ private:
         e.at = std::max (e.at, lastStamp);
         lastStamp = e.at;
         const uint32_t next = (tail + 1) % queueSize;
-        if (next == head) // full: the oldest goes now
+        // Full (4,095 waiting; hdslaveOS never sends this many): the oldest is taken at once to make room, so
+        // nothing is ever dropped. Only its timing gives, and only past the end of the queue. Pinned by the
+        // host tests' flood case, which must sound the same at any block size.
+        if (next == head)
             apply (events[head]), head = (head + 1) % queueSize;
         events[tail] = e;
         tail = next;

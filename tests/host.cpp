@@ -1193,6 +1193,27 @@ void testLatencyTail()
     CHECK (rms (out.l, 24000 + 48000 * 6, 24000 + 48000 * 6 + 4800) > 1e-3);
 }
 
+// A flood past the event queue's end (4,095 waiting) loses nothing and sounds the same at any block size: the
+// oldest waiting event is taken at once to make room (engine.h). Unreachable at hdslaveOS's event counts; pinned
+// here so the policy cannot drift unnoticed.
+void testQueueFlood()
+{
+    using namespace ParamId;
+    std::vector<Cue> cues;
+    for (int i = 0; i < 6000; ++i)
+        cues.push_back (P (0, harmonics, (i % 8) * 0.1));
+    cues.push_back (P (0, harmonics, 0.25));
+    cues.push_back (P (0, model, 8));
+    cues.push_back (On (0, 60, 1.0));
+    cues.push_back (Off (24000, 60));
+    Instance a, b;
+    const auto small = a.render (48000, cues, 128);
+    const auto large = b.render (48000, cues, 4096);
+    CHECK (finite (small.l) && finite (small.r));
+    CHECK (rms (small.l, 4800, 24000) > 1e-3);
+    CHECK (small.l == large.l && small.r == large.r);
+    CHECK (a.value (harmonics) == 0.25);
+}
 } // namespace
 
 int main (int argc, char** argv)
@@ -1231,6 +1252,7 @@ int main (int argc, char** argv)
     run ("screen", [&] { testScreen (folder); });
     run ("playertext", testPlayerText);
     run ("latencytail", testLatencyTail);
+    run ("queueflood", testQueueFlood);
     entry->deinit();
     std::printf ("%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
