@@ -37,7 +37,7 @@ using namespace nexus;
 const clap_plugin_entry* entry = nullptr;
 const clap_plugin_factory* factory = nullptr;
 
-int rescans = 0, paints = 0, processRequests = 0, presetsLoaded = 0, presetErrors = 0, flushes = 0;
+int rescans = 0, paints = 0, processRequests = 0, presetsLoaded = 0, presetErrors = 0, flushes = 0, latencyNotices = 0;
 const void* hostExtension (const clap_host*, const char* id)
 {
     static const clap_host_params params { [] (const clap_host*, clap_param_rescan_flags f) { rescans += (f & CLAP_PARAM_RESCAN_VALUES) != 0; },
@@ -47,8 +47,10 @@ const void* hostExtension (const clap_host*, const char* id)
         [] (const clap_host*, uint32_t, const char*, const char*, int32_t, const char*) { ++presetErrors; },
         [] (const clap_host*, uint32_t, const char*, const char*) { ++presetsLoaded; },
     };
+    static const clap_host_latency latency { [] (const clap_host*) { ++latencyNotices; } };
     if (std::strcmp (id, CLAP_EXT_MELODEE_SCREEN_HOST) == 0) return &screen;
     if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &params;
+    if (std::strcmp (id, CLAP_EXT_LATENCY) == 0) return &latency;
     if (std::strcmp (id, CLAP_EXT_PRESET_LOAD) == 0) return &presetLoad;
     return nullptr;
 }
@@ -1157,7 +1159,10 @@ void testLatencyTail()
     };
     for (double rate : { 44100.0, 48000.0, 96000.0 })
     {
+        // Activation tells the host the delay changed, so it re-reads the value for this rate.
+        const int notices = latencyNotices;
         Instance a (rate);
+        CHECK (latencyNotices == notices + 1);
         const auto* latency = static_cast<const clap_plugin_latency*> (a.plugin->get_extension (a.plugin, CLAP_EXT_LATENCY));
         const auto* tail = static_cast<const clap_plugin_tail*> (a.plugin->get_extension (a.plugin, CLAP_EXT_TAIL));
         CHECK (latency != nullptr && tail != nullptr);

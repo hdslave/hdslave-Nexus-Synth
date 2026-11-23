@@ -59,6 +59,7 @@ struct Plugin
     Engine engine { &telemetry };
     bool active = false;
     const clap_host_params* hostParams = nullptr;
+    const clap_host_latency* hostLatency = nullptr;
     // Melodee's page. Values it sets are told to the host from the next process or flush (outgoing).
     const clap_host_melodee_screen* hostScreen = nullptr;
     Screen screen { values, telemetry };
@@ -452,6 +453,7 @@ bool pluginInit (const clap_plugin* plugin)
         p.engine.set ((uint32_t) i, paramTable[i].def);
     }
     p.hostParams = static_cast<const clap_host_params*> (p.host->get_extension (p.host, CLAP_EXT_PARAMS));
+    p.hostLatency = static_cast<const clap_host_latency*> (p.host->get_extension (p.host, CLAP_EXT_LATENCY));
     p.hostScreen = static_cast<const clap_host_melodee_screen*> (p.host->get_extension (p.host, CLAP_EXT_MELODEE_SCREEN_HOST));
     return true;
 }
@@ -479,6 +481,9 @@ bool pluginActivate (const clap_plugin* plugin, double rate, uint32_t, uint32_t)
     p.noteIds.clear();
     p.engine.prepare (rate);
     p.active = true;
+    // The delay follows the rate just prepared: the host re-reads it on this notice (clap_host_latency).
+    if (p.hostLatency != nullptr && p.hostLatency->changed != nullptr)
+        p.hostLatency->changed (p.host);
     return true;
 }
 
