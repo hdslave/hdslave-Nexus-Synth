@@ -263,7 +263,8 @@ private:
         randomTrail[trailLength - 1] = randomShown;
         for (int i = 0; i < maxVoices; ++i)
             levelShown[i] = tel.levels[i].load (std::memory_order_relaxed), keyShown[i] = tel.keys[i].load (std::memory_order_relaxed);
-        // The scope: the newest samples, from a rising zero crossing.
+        // The scope: the newest samples, from a rising zero crossing. Only the MODEL page draws it.
+        if (page != plaitsPage) return;
         const uint32_t end = tel.scopeAt.load (std::memory_order_acquire);
         constexpr int span = 1024;
         float x[span];

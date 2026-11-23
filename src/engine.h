@@ -384,6 +384,11 @@ public:
             left[n] = softLimit (l);
             if (right != nullptr) right[n] = softLimit (r);
         }
+        if (ticked)
+        {
+            publishTelemetry();
+            ticked = false;
+        }
         hostFrame += frames;
         stampFrame = 0;
     }
@@ -979,6 +984,39 @@ private:
         }
     }
 
+    // The last tick's view for the page, published once a host block (render()).
+    void publishTelemetry()
+    {
+        const int newest = telNewest;
+        tel->sounding.store (telSounding, std::memory_order_relaxed);
+        tel->gated.store (telGated, std::memory_order_relaxed);
+        for (int i = 0; i < maxVoices; ++i)
+        {
+            tel->keys[i].store (voices[i].active ? voices[i].key : -1, std::memory_order_relaxed);
+            tel->levels[i].store (voices[i].active ? voices[i].peak : 0.0f, std::memory_order_relaxed);
+        }
+        tel->lfo[0].store (lfoNow[0], std::memory_order_relaxed), tel->lfo[1].store (lfoNow[1], std::memory_order_relaxed);
+        tel->cycle.store (cycleNow, std::memory_order_relaxed), tel->random.store (rndValue, std::memory_order_relaxed);
+        tel->wheel.store (wheel, std::memory_order_relaxed), tel->pressure.store (channelPressure, std::memory_order_relaxed);
+        if (newest >= 0)
+        {
+            tel->env1.store (voices[newest].env1.value, std::memory_order_relaxed);
+            tel->env2.store (voices[newest].env2.value, std::memory_order_relaxed);
+            // The shown voice's own LFOs, valued here when no route took them (renderVoice skipped the value).
+            for (int l = 0; l < 2; ++l)
+                if (v (ParamId::lfo1PerVoice + 7u * (uint32_t) l) >= 0.5f)
+                    tel->lfo[l].store (sourceUsed[l == 0 ? Source::lfo1 : Source::lfo2]
+                                           ? voiceLfo[newest][l]
+                                           : voices[newest].lfo[l].value (iv (ParamId::lfo1Shape + 7u * (uint32_t) l),
+                                                                          v (ParamId::lfo1Phase + 7u * (uint32_t) l)),
+                                       std::memory_order_relaxed);
+            tel->cutoff.store (voiceCutoff[newest], std::memory_order_relaxed);
+        }
+        else
+            tel->env1.store (0.0f, std::memory_order_relaxed), tel->env2.store (0.0f, std::memory_order_relaxed),
+                tel->cutoff.store (v (ParamId::cutoff), std::memory_order_relaxed);
+    }
+
     void tick()
     {
         blockStart = rendered;
@@ -1016,34 +1054,9 @@ private:
         if (any) silentFrom = rendered;
         quietBlocks = any ? 0 : std::min (quietBlocks + 1, 1 << 20);
 
-        // The page's view.
-        tel->sounding.store (sounding, std::memory_order_relaxed);
-        tel->gated.store (gated, std::memory_order_relaxed);
-        for (int i = 0; i < maxVoices; ++i)
-        {
-            tel->keys[i].store (voices[i].active ? voices[i].key : -1, std::memory_order_relaxed);
-            tel->levels[i].store (voices[i].active ? voices[i].peak : 0.0f, std::memory_order_relaxed);
-        }
-        tel->lfo[0].store (lfoNow[0], std::memory_order_relaxed), tel->lfo[1].store (lfoNow[1], std::memory_order_relaxed);
-        tel->cycle.store (cycleNow, std::memory_order_relaxed), tel->random.store (rndValue, std::memory_order_relaxed);
-        tel->wheel.store (wheel, std::memory_order_relaxed), tel->pressure.store (channelPressure, std::memory_order_relaxed);
-        if (newest >= 0)
-        {
-            tel->env1.store (voices[newest].env1.value, std::memory_order_relaxed);
-            tel->env2.store (voices[newest].env2.value, std::memory_order_relaxed);
-            // The shown voice's own LFOs, valued here when no route took them (renderVoice skipped the value).
-            for (int l = 0; l < 2; ++l)
-                if (v (ParamId::lfo1PerVoice + 7u * (uint32_t) l) >= 0.5f)
-                    tel->lfo[l].store (sourceUsed[l == 0 ? Source::lfo1 : Source::lfo2]
-                                           ? voiceLfo[newest][l]
-                                           : voices[newest].lfo[l].value (iv (ParamId::lfo1Shape + 7u * (uint32_t) l),
-                                                                          v (ParamId::lfo1Phase + 7u * (uint32_t) l)),
-                                       std::memory_order_relaxed);
-            tel->cutoff.store (voiceCutoff[newest], std::memory_order_relaxed);
-        }
-        else
-            tel->env1.store (0.0f, std::memory_order_relaxed), tel->env2.store (0.0f, std::memory_order_relaxed),
-                tel->cutoff.store (v (ParamId::cutoff), std::memory_order_relaxed);
+        // The page's view, kept plain here and published once a host block in render() (the scope still appends
+        // every tick: it is a waveform, not a level).
+        telSounding = sounding, telGated = gated, telNewest = newest, ticked = true;
         if (any)
         {
             const uint32_t s = tel->scopeAt.load (std::memory_order_relaxed);
@@ -1232,6 +1245,9 @@ private:
     Voice voices[maxVoices];
     float voiceLfo[maxVoices][2] {};
     float voiceCutoff[maxVoices] {};
+    uint32_t telSounding = 0, telGated = 0;
+    int telNewest = -1;
+    bool ticked = false;
     uint32_t ages = 0, noteCounter = 0;
     static constexpr int stackCapacity = 16;
     int stack[stackCapacity] {};
