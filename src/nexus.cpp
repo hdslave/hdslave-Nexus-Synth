@@ -297,7 +297,8 @@ void paramsFlush (const clap_plugin* plugin, const clap_input_events* in, const 
 const clap_plugin_params paramsExtension { paramsCount, paramsInfo, paramsValue, paramsToText, paramsFromText, paramsFlush };
 
 // State: "NXUS", a version, the number of values, then (id, value) pairs; unknown ids are skipped, missing ones keep
-// their defaults, so a state saved by another version still loads.
+// their defaults. Only the version this build writes loads: a blob claiming any other version is refused whole, so a
+// future layout can never be misread as this one.
 constexpr char stateTag[4] = { 'N', 'X', 'U', 'S' };
 constexpr uint32_t stateVersion = 1;
 
@@ -364,7 +365,7 @@ bool stateLoad (const clap_plugin* plugin, const clap_istream* stream)
     char tag[4] = {};
     uint32_t header[2] = {};
     if (! readAll (stream, tag, 4) || std::memcmp (tag, stateTag, 4) != 0 || ! readAll (stream, header, sizeof (header))
-        || header[0] == 0 || header[1] > 4096)
+        || header[0] != stateVersion || header[1] > 4096)
         return false;
     float loaded[paramCount];
     for (int i = 0; i < paramCount; ++i)

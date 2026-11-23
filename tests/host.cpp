@@ -367,6 +367,20 @@ void testState()
         odd.bytes.insert (odd.bytes.end(), (const uint8_t*) pairs, (const uint8_t*) pairs + 16);
         CHECK (b.state->load (b.plugin, &odd.in));
         CHECK (b.value (morph) == 0.75 && b.value (model) == 8);
+        // Only the written version loads: a blob claiming a newer (or zero) version is refused whole, values kept.
+        for (uint32_t version : { 0u, 2u, 99u })
+        {
+            Stream future;
+            future.bytes = s.bytes;
+            std::memcpy (future.bytes.data() + 4, &version, 4);
+            CHECK (! b.state->load (b.plugin, &future.in));
+            CHECK (b.value (morph) == 0.75 && b.value (model) == 8);
+        }
+        // A blob cut short changes nothing either.
+        Stream cut;
+        cut.bytes.assign (s.bytes.begin(), s.bytes.begin() + 20);
+        CHECK (! b.state->load (b.plugin, &cut.in));
+        CHECK (b.value (morph) == 0.75 && b.value (model) == 8);
     }
 }
 
