@@ -441,6 +441,10 @@ private:
         int triggerLow = 0;
         bool retrigEdge = false;
         Svf filter;
+        // The filter and pan laws at their last exact inputs: recomputed only when an input float changes (the
+        // laws are pure, so the kept coefficients are the very floats a recomputation would give). Cutoff and
+        // resonance are clamped to 0..1 and pan to -1..1, so these first values never match.
+        float filterCut = -1.0f, filterReso = -1.0f, panAt = 2.0f, panToL = 0.0f, panToR = 0.0f;
         int silent = 0;
         float vca = 0.0f, panL = 0.70710678f, panR = 0.70710678f;
         float peak = 0.0f;
@@ -1143,13 +1147,22 @@ private:
             // Back in after being fully open: from where the sound is (a low-pass's resting state for it), not from
             // what it held before.
             if (vc.filterOpen) vc.filter.s1 = 0.0f, vc.filter.s2 = vc.lastIn;
-            vc.filter.set (cutoffHz (cut), resonanceQ (reso));
+            if (cut != vc.filterCut || reso != vc.filterReso)
+            {
+                vc.filter.set (cutoffHz (cut), resonanceQ (reso));
+                vc.filterCut = cut, vc.filterReso = reso;
+            }
         }
         vc.filterOpen = open;
         const float level = std::clamp (v (ParamId::volume) * 0.5f + mod[Target::volume], 0.0f, 1.0f) * 2.0f;
         const float p = std::clamp (v (ParamId::pan) + spreadAt * v (ParamId::spread) + mod[Target::pan], -1.0f, 1.0f);
-        const float angle = (p + 1.0f) * 0.78539816f;
-        const float targetL = std::cos (angle), targetR = std::sin (angle);
+        if (p != vc.panAt)
+        {
+            const float angle = (p + 1.0f) * 0.78539816f;
+            vc.panToL = std::cos (angle), vc.panToR = std::sin (angle);
+            vc.panAt = p;
+        }
+        const float targetL = vc.panToL, targetR = vc.panToR;
         const float gainTo = vc.fading ? 0.0f : vca * level * voiceGain;
         const float gainStep = (gainTo - vc.vca) / (float) block;
         const float lStep = (targetL - vc.panL) / (float) block, rStep = (targetR - vc.panR) / (float) block;
