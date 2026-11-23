@@ -5,7 +5,7 @@
 // model:N: eight voices (eight keys) of model N, Gate, as a measure of each model's cost.
 // worst: eight voices of the heaviest model (6-op FM, unison 8 on one note), every modulator routed, the filter
 // resonant; pad: the Wavetable Pad preset, a four-note chord; typical: the Saw Lead preset playing a line; silent: no
-// notes; paint: the PLAITS page painted 25 times a second while the pad plays.
+// notes; paint: the MODEL page painted 25 times a second while the pad plays.
 #include "../src/nexus.cpp"
 
 #include <chrono>

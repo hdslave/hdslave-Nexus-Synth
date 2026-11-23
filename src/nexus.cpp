@@ -25,7 +25,7 @@ const char* const features[] = { CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEA
 
 const clap_plugin_descriptor descriptor {
     CLAP_VERSION, "com.hdslave.nexus", "hdslave Nexus", "hdslave", "", "", "", NEXUS_VERSION,
-    "Plaits' 24 macro-oscillator models as a polyphonic synthesizer: unison, two envelopes, two LFOs, a cycling "
+    "24 macro-oscillator models as a polyphonic synthesizer: unison, two envelopes, two LFOs, a cycling "
     "envelope, random, a filter and two modulation matrices, with its own page",
     features,
 };

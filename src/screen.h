@@ -1,6 +1,6 @@
 // Nexus's page on Melodee's screen (melodee_screen.h): 320 x 218 under the soft keys.
 //
-//   PLAITS  the model (its bank's grid and name), FREQ HARMONICS TIMBRE MORPH, the attenuverters, the low-pass gate,
+//   MODEL   the model (its bank's grid and name), FREQ HARMONICS TIMBRE MORPH, the attenuverters, the low-pass gate,
 //           OUT/AUX and a scope of what plays, with what the three macros do in this model.
 //   VOICE   voice mode, notes, unison, detune, spread, pan, glide, bend, velocity and pressure curves, the filter
 //           (with its response) and the eight voices at work.
@@ -286,7 +286,7 @@ private:
             for (int x = 0; x < wordmark::width; ++x)
                 r.px[y * r.w + x] = wordmark::palette[wordmark::rows[y][x] - ' '];
 
-        static const char* const names[pageCount] = { "PLAITS", "VOICE", "ENV", "LFO", "CYCLE", "MOD", "ASSIGN" };
+        static const char* const names[pageCount] = { "MODEL", "VOICE", "ENV", "LFO", "CYCLE", "MOD", "ASSIGN" };
         // A slashed navigation strip. Its seven cuts double as the page indicator.
         for (int y = 0; y < 15; ++y)
         {

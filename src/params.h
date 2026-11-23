@@ -76,15 +76,15 @@ inline constexpr ModelRole modelRoles[modelCount] = {
     { "Resonance", "Cutoff", "Shape", "LP / HP" },        { "Distortion", "PD amount", "Modulation", "Synced" },
     { "Preset", "Modulation", "Env stretch", "Unused" },  { "Preset", "Modulation", "Env stretch", "Unused" },
     { "Preset", "Modulation", "Env stretch", "Unused" },  { "Terrain", "Path radius", "Path offset", "Terrain z" },
-    { "Chord", "Chorus/filt", "Waveform", "Odd voices" }, { "Chord", "Arp/chord", "Pulse width", "NES triangle" },
+    { "Chord", "Chorus/filt", "Waveform", "Odd voices" }, { "Chord", "Arp/chord", "Pulse width", "Triangle" },
     { "Detune", "Square shape", "Saw shape", "Sync sum" }, { "Waveform", "Fold amount", "Asymmetry", "Variant" },
     { "Ratio", "FM index", "Feedback", "Sub osc" },       { "Formant ratio", "Formant freq", "Formant width", "Variant" },
     { "Bumps", "Prominent", "Bump shape", "Organ" },      { "Bank", "Row", "Column", "Lo-fi" },
     { "Chord", "Inversion", "Waveform", "Root" },         { "Mode", "Species", "Phoneme", "Unfiltered" },
     { "Pitch spread", "Grain rate", "Grain shape", "Sine" }, { "Bandwidth", "Clock", "Resonance", "Dual BP" },
     { "Randomness", "Density", "Filter", "Raw dust" },    { "Inharmonic", "Excitation", "Decay", "Raw exciter" },
-    { "Inharmonic", "Excitation", "Decay", "Raw exciter" }, { "Attack/punch", "Brightness", "Decay", "808 style" },
-    { "Snappy", "Body/noise", "Decay", "808 style" },     { "Metallic", "HP cutoff", "Decay", "808 style" },
+    { "Inharmonic", "Excitation", "Decay", "Raw exciter" }, { "Attack/punch", "Brightness", "Decay", "Variant" },
+    { "Snappy", "Body/noise", "Decay", "Variant" },     { "Metallic", "HP cutoff", "Decay", "Variant" },
 };
 
 inline const char* const offOn[] = { "Off", "On" };
@@ -164,18 +164,18 @@ inline const Param* makeTable()
     static Builder b;
     if (b.n != 0) return b.list;
     using namespace ParamId;
-    b.add (model, "Model", "MODEL", "Plaits", 0, 23, 8, K::choice, U::choice, modelChoices);
-    b.add (frequency, "Frequency", "FREQ", "Plaits", -48, 48, 0, K::continuous, U::semis);
-    b.add (harmonics, "Harmonics", "HARM", "Plaits", 0, 1, 0.5f, K::continuous, U::unit);
-    b.add (timbre, "Timbre", "TIMBRE", "Plaits", 0, 1, 0.5f, K::continuous, U::unit);
-    b.add (morph, "Morph", "MORPH", "Plaits", 0, 1, 0.5f, K::continuous, U::unit);
-    b.add (timbreAtt, "Timbre Att", "T.ATT", "Plaits", -1, 1, 0, K::continuous, U::bipolar);
-    b.add (fmAtt, "FM Att", "FM ATT", "Plaits", -1, 1, 0, K::continuous, U::bipolar);
-    b.add (morphAtt, "Morph Att", "M.ATT", "Plaits", -1, 1, 0, K::continuous, U::bipolar);
-    b.add (auxMix, "Out/Aux", "AUX", "Plaits", 0, 1, 0, K::continuous, U::unit);
-    b.add (ampMode, "Amp", "AMP", "Plaits", 0, 3, 0, K::choice, U::choice, ampChoices);
-    b.add (lpgColor, "LPG Color", "COLOR", "Plaits", 0, 1, 0.55f, K::continuous, U::unit);
-    b.add (lpgDecay, "LPG Decay", "DECAY", "Plaits", 0, 1, 0.35f, K::continuous, U::unit);
+    b.add (model, "Model", "MODEL", "Oscillator", 0, 23, 8, K::choice, U::choice, modelChoices);
+    b.add (frequency, "Frequency", "FREQ", "Oscillator", -48, 48, 0, K::continuous, U::semis);
+    b.add (harmonics, "Harmonics", "HARM", "Oscillator", 0, 1, 0.5f, K::continuous, U::unit);
+    b.add (timbre, "Timbre", "TIMBRE", "Oscillator", 0, 1, 0.5f, K::continuous, U::unit);
+    b.add (morph, "Morph", "MORPH", "Oscillator", 0, 1, 0.5f, K::continuous, U::unit);
+    b.add (timbreAtt, "Timbre Att", "T.ATT", "Oscillator", -1, 1, 0, K::continuous, U::bipolar);
+    b.add (fmAtt, "FM Att", "FM ATT", "Oscillator", -1, 1, 0, K::continuous, U::bipolar);
+    b.add (morphAtt, "Morph Att", "M.ATT", "Oscillator", -1, 1, 0, K::continuous, U::bipolar);
+    b.add (auxMix, "Out/Aux", "AUX", "Oscillator", 0, 1, 0, K::continuous, U::unit);
+    b.add (ampMode, "Amp", "AMP", "Oscillator", 0, 3, 0, K::choice, U::choice, ampChoices);
+    b.add (lpgColor, "LPG Color", "COLOR", "Oscillator", 0, 1, 0.55f, K::continuous, U::unit);
+    b.add (lpgDecay, "LPG Decay", "DECAY", "Oscillator", 0, 1, 0.35f, K::continuous, U::unit);
     b.add (trigRate, "Trig Rate", "RETRIG", "Env", 0, 7, 0, K::choice, U::choice, trigRateChoices);
     b.add (voiceMode, "Voice Mode", "MODE", "Voice", 0, 2, 1, K::choice, U::choice, voiceModeChoices);
     b.add (notes, "Notes", "NOTES", "Voice", 1, 8, 4, K::integer, U::count);

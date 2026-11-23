@@ -18,7 +18,7 @@ docker --context "$CONTEXT" run --rm --platform linux/arm64 -v "$PWD:/work" -w /
             p=\$(valgrind --tool=callgrind --callgrind-out-file=/dev/null build/bench paint $SECONDS_RUN 2>&1 | grep -o 'refs: *[0-9,]*' | tr -d 'refs: ,')
             t=\$(valgrind --tool=callgrind --callgrind-out-file=/dev/null build/bench pad $SECONDS_RUN 2>&1 | grep -o 'refs: *[0-9,]*' | tr -d 'refs: ,')
             w=\$(valgrind --tool=callgrind --callgrind-out-file=/dev/null build/bench pad 0 2>&1 | grep -o 'refs: *[0-9,]*' | tr -d 'refs: ,')
-            awk -v p=\$p -v t=\$t -v w=\$w -v n=\$blocks 'BEGIN { frames = int ((n + 14) / 15); printf \"%-8s %9.0f instructions a painted frame (PLAITS page, sounding, 25 frames a second)\\n\", \"paint\", (p - t) / frames }'
+            awk -v p=\$p -v t=\$t -v w=\$w -v n=\$blocks 'BEGIN { frames = int ((n + 14) / 15); printf \"%-8s %9.0f instructions a painted frame (MODEL page, sounding, 25 frames a second)\\n\", \"paint\", (p - t) / frames }'
             continue
         fi
         refs=\$(valgrind --tool=callgrind --callgrind-out-file=build/callgrind.\$mode build/bench \$mode $SECONDS_RUN 2>&1 | grep -o 'refs: *[0-9,]*' | tr -d 'refs: ,')
