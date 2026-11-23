@@ -353,7 +353,10 @@ public:
     void set (uint32_t id, float v)
     {
         if (id >= (uint32_t) paramCount) return;
-        if (! prepared) { value[id] = v, derive(); return; }
+        // Inactive: only the value is kept; what derives from it (envelope coefficients, the route list, the glide)
+        // is rebuilt once when the engine is next prepared or reset, so a bulk load of all 134 values derives once,
+        // not 134 times. Nothing reads the derived state while inactive.
+        if (! prepared) { value[id] = v, dirty = true; return; }
         push (Ev { 0, Ev::param, 0, (uint16_t) id, v, 0.0 });
     }
     void noteOn (int key, float velocity) { push (Ev { 0, Ev::noteOn, (uint8_t) std::clamp (key, 0, 127), 0, velocity, 0.0 }); }
