@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 
 namespace hdui
 {
@@ -182,7 +183,8 @@ struct Raster
 };
 
 // Keeps the last pixels the plug-in drew (Melodee draws its own overlays on the canvas), so each region is drawn into
-// scratch, compared row by row, and only the changed span of a changed row is copied out.
+// scratch, compared row by row, and only the changed span of a changed row is copied out. The two stores (460,800
+// bytes together) are taken at the first paint, so an instance whose page is never shown never pays for them.
 class Picture
 {
 public:
@@ -190,14 +192,20 @@ public:
     bool region (Ink* dest, int stride, bool whole, int x, int y, Draw draw)
     {
         static_assert (W * H <= capacity, "a region fits the scratch");
-        Raster r { scratch, W, H };
-        std::fill_n (scratch, W * H, ink::bg);
+        if (prior == nullptr)
+        {
+            prior = std::make_unique<Ink[]> (width * height);
+            scratch = std::make_unique<Ink[]> (capacity);
+            std::fill_n (prior.get(), width * height, Ink (0)); // as the embedded store started
+        }
+        Raster r { scratch.get(), W, H };
+        std::fill_n (scratch.get(), W * H, ink::bg);
         draw (r);
         bool touched = false;
         for (int j = 0; j < H; ++j)
         {
-            Ink* old = prior + (y + j) * width + x;
-            const Ink* row = scratch + j * W;
+            Ink* old = prior.get() + (y + j) * width + x;
+            const Ink* row = scratch.get() + j * W;
             if (! whole && std::memcmp (old, row, W * sizeof (Ink)) == 0)
                 continue;
             int left = 0, right = W;
@@ -215,6 +223,6 @@ public:
 
 private:
     static constexpr int capacity = 320 * 142;
-    Ink prior[width * height] {}, scratch[capacity] {};
+    std::unique_ptr<Ink[]> prior, scratch;
 };
 } // namespace hdui
