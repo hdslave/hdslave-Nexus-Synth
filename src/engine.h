@@ -497,6 +497,8 @@ private:
                     routes[routeCount++] = { (uint8_t) source, (uint8_t) target, depth (amount) };
             }
         }
+        for (bool& used : sourceUsed) used = false;
+        for (int r = 0; r < routeCount; ++r) sourceUsed[routes[r].source] = true;
         glideCoef = onePole (glideMs (v (ParamId::glide)));
         slideCoef = onePole (glideMs (v (ParamId::glide)) > 0.0f ? glideMs (v (ParamId::glide)) : 60.0f);
         dirty = false;
@@ -1029,8 +1031,14 @@ private:
         {
             tel->env1.store (voices[newest].env1.value, std::memory_order_relaxed);
             tel->env2.store (voices[newest].env2.value, std::memory_order_relaxed);
-            if (v (ParamId::lfo1PerVoice) >= 0.5f) tel->lfo[0].store (voiceLfo[newest][0], std::memory_order_relaxed);
-            if (v (ParamId::lfo2PerVoice) >= 0.5f) tel->lfo[1].store (voiceLfo[newest][1], std::memory_order_relaxed);
+            // The shown voice's own LFOs, valued here when no route took them (renderVoice skipped the value).
+            for (int l = 0; l < 2; ++l)
+                if (v (ParamId::lfo1PerVoice + 7u * (uint32_t) l) >= 0.5f)
+                    tel->lfo[l].store (sourceUsed[l == 0 ? Source::lfo1 : Source::lfo2]
+                                           ? voiceLfo[newest][l]
+                                           : voices[newest].lfo[l].value (iv (ParamId::lfo1Shape + 7u * (uint32_t) l),
+                                                                          v (ParamId::lfo1Phase + 7u * (uint32_t) l)),
+                                       std::memory_order_relaxed);
             tel->cutoff.store (voiceCutoff[newest], std::memory_order_relaxed);
         }
         else
@@ -1057,8 +1065,12 @@ private:
             const uint32_t o = 7u * (uint32_t) l;
             if (v (ParamId::lfo1PerVoice + o) >= 0.5f)
             {
+                // The phase (and its random draws on a wrap) always advances; only the value is skipped when no
+                // route takes this LFO. value() is pure, and the page's one shown voice is valued in tick().
                 advanceLfo (vc.lfo[l], l, lfoHz (l), false, 1.0);
-                lfo[l] = vc.lfo[l].value (iv (ParamId::lfo1Shape + o), v (ParamId::lfo1Phase + o));
+                lfo[l] = sourceUsed[l == 0 ? Source::lfo1 : Source::lfo2]
+                             ? vc.lfo[l].value (iv (ParamId::lfo1Shape + o), v (ParamId::lfo1Phase + o))
+                             : 0.0f;
             }
             else
                 lfo[l] = lfoNow[l];
@@ -1070,7 +1082,7 @@ private:
         source[Source::env1] = e1, source[Source::env2] = e2;
         source[Source::cycle] = cycleNow, source[Source::random] = rndValue;
         source[Source::velocity] = vc.velocityAmount;
-        source[Source::aftertouch] = curvedPressure (std::max (vc.pressure, channelPressure));
+        source[Source::aftertouch] = sourceUsed[Source::aftertouch] ? curvedPressure (std::max (vc.pressure, channelPressure)) : 0.0f;
         source[Source::wheel] = wheel;
         float mod[Target::count] {};
         for (int r = 0; r < routeCount; ++r)
@@ -1214,6 +1226,7 @@ private:
     struct Route { uint8_t source, target; float depth; };
     Route routes[routeSources * routeTargets + assignSlots * assignSlots] {};
     int routeCount = 0;
+    bool sourceUsed[Source::count] {}; // a route takes this source (derive()); unrouted sources are not evaluated
     float glideCoef = 1.0f, slideCoef = 1.0f;
 
     Voice voices[maxVoices];
