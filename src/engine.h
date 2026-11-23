@@ -428,7 +428,9 @@ private:
     struct Voice
     {
         plaits::NexusVoice plaits;
-        char ram[plaits::kNexusVoiceRam];
+        // The engines bump-allocate their state from this store with no alignment padding of their own; keep its
+        // base 16-aligned so no engine's first object can sit unaligned. Offsets inside it do not move.
+        alignas (16) char ram[plaits::kNexusVoiceRam];
         uint32_t random = 0x21;
         bool active = false, gate = false, sustained = false;
         // A key let go before the voice has played a block plays that block first (a note shorter than 0.25 ms still
