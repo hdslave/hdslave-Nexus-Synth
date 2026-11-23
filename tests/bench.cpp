@@ -48,11 +48,6 @@ int main (int argc, char** argv)
         param (model, std::atoi (mode.c_str() + 6)), param (notes, 8);
         for (int k : { 36, 43, 48, 52, 55, 60, 64, 67 }) note (first, 0, 0x90, (uint8_t) k, 100);
     }
-    if (mode.rfind ("model:", 0) == 0)
-    {
-        param (model, std::atoi (mode.c_str() + 6)), param (notes, 8);
-        for (int k : { 36, 43, 48, 52, 55, 60, 64, 67 }) note (first, 0, 0x90, (uint8_t) k, 100);
-    }
     if (mode == "pad" || mode == "paint")
         for (int k : { 60, 64, 67, 71 }) note (first, 0, 0x90, (uint8_t) k, 100);
 
