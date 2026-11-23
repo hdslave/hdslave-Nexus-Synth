@@ -395,6 +395,14 @@ public:
         return true;
     }
     uint32_t hostRate() const { return hostHz; }
+    // The note-to-sound delay in host samples, as a group delay: the stamp delay, the four blocks the trigger waits
+    // in plaits_voice.cc, and up to a block waiting for the next 12-sample tick. A voice's own attack is not part of
+    // it. Renders put a Ping onset's first sample at or below this (the resampler's reach sounds a touch early).
+    uint32_t latencySamples() const
+    {
+        const uint64_t at48k = delay + 4 * (uint64_t) block + (uint64_t) (block - 1);
+        return (uint32_t) ((at48k * hostHz + internalRate - 1) / internalRate);
+    }
     float valueOf (uint32_t id) const { return value[id]; }
 
 private:

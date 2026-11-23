@@ -1133,6 +1133,66 @@ void testPlayerText()
             CHECK (std::string (p.name).find (banned) == std::string::npos);
 }
 
+// The delay from a note to its sound (the stamp delay, four blocks of trigger delay and up to a block waiting for
+// the next 12-sample tick, as a group delay), reported per host rate; the tail is unbounded (below).
+void testLatencyTail()
+{
+    using namespace ParamId;
+    auto expectedLatency = [] (uint32_t rate) {
+        uint64_t delay = 12;
+        if (rate != 48000)
+        {
+            const double ratio = std::min (1.0, (double) rate / 48000.0);
+            const int half = (int) std::ceil (16.0 / ratio);
+            const int taps = (2 * half + 3) & ~3;
+            delay = (uint64_t) (taps - half) + 13;
+        }
+        return (uint32_t) ((delay + 48 + 11) * rate + 47999) / 48000;
+    };
+    auto resamplerAhead = [] (uint32_t rate) {
+        if (rate == 48000) return 0;
+        const double ratio = std::min (1.0, (double) rate / 48000.0);
+        const int half = (int) std::ceil (16.0 / ratio);
+        return ((2 * half + 3) & ~3) - half;
+    };
+    for (double rate : { 44100.0, 48000.0, 96000.0 })
+    {
+        Instance a (rate);
+        const auto* latency = static_cast<const clap_plugin_latency*> (a.plugin->get_extension (a.plugin, CLAP_EXT_LATENCY));
+        const auto* tail = static_cast<const clap_plugin_tail*> (a.plugin->get_extension (a.plugin, CLAP_EXT_TAIL));
+        CHECK (latency != nullptr && tail != nullptr);
+        if (latency == nullptr || tail == nullptr) continue;
+        const uint32_t reported = latency->get (a.plugin);
+        CHECK (reported == expectedLatency ((uint32_t) rate));
+        CHECK (tail->get (a.plugin) == UINT32_MAX); // a string at longest decay still sounds minutes on (README)
+        // A Ping note's first sounding sample (Virtual Analog: a sharp onset on the trigger path) falls no later
+        // than the reported delay, and no earlier than the resampler's reach plus a tick before it.
+        for (uint64_t off : { 0ull, 5ull, 11ull })
+        {
+            Instance b (rate);
+            const uint64_t noteAt = (uint64_t) (rate / 10.0) + off, frames = (uint64_t) (rate / 2.0);
+            const auto out = b.render (frames, { P (0, model, 8), P (0, ampMode, Amp::ping), On (noteAt, 60),
+                                                  Off (noteAt + frames / 2, 60) });
+            long first = -1;
+            for (size_t i = 0; i < out.l.size(); ++i)
+                if (out.l[i] != 0.0f || out.r[i] != 0.0f) { first = (long) i; break; }
+            CHECK (first >= 0);
+            const long onset = first - (long) noteAt;
+            const long slack = (long) ((resamplerAhead ((uint32_t) rate) + 12) * rate / 48000.0) + 2;
+            if (! (onset <= (long) reported && (long) reported - onset <= slack))
+                std::printf ("  rate %.0f off %llu: onset %ld, reported %u, slack %ld\n", rate, (unsigned long long) off, onset,
+                             reported, slack);
+            CHECK (onset <= (long) reported && (long) reported - onset <= slack);
+        }
+    }
+    // The longest release is still plainly sounding six seconds after the key goes: the tail is not its 5 s knob.
+    Instance a (48000.0);
+    const auto out = a.render (48000 * 8, { P (0, model, 8), P (0, ampMode, Amp::env), P (0, env1Attack, 0),
+                                             P (0, env1Sustain, 1), P (0, env1Release, 1), P (0, lpgDecay, 1), On (4800, 60),
+                                             Off (24000, 60) });
+    CHECK (rms (out.l, 24000 + 48000 * 6, 24000 + 48000 * 6 + 4800) > 1e-3);
+}
+
 } // namespace
 
 int main (int argc, char** argv)
@@ -1170,6 +1230,7 @@ int main (int argc, char** argv)
     run ("sleep", testSleep);
     run ("screen", [&] { testScreen (folder); });
     run ("playertext", testPlayerText);
+    run ("latencytail", testLatencyTail);
     entry->deinit();
     std::printf ("%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

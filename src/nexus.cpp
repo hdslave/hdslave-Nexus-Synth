@@ -639,9 +639,19 @@ void screenKnobs (const clap_plugin* plugin, clap_id ids[3])
 
 const clap_plugin_melodee_screen screenExtension { screenPaint, screenInput, screenKnobs };
 
+// Delay and tail. The delay is the engine's (per host rate, set at activation). The tail never ends on its own at
+// the longest settings: measured, an inharmonic string still sounds at full level five minutes after its key, a
+// modal resonator rings past 200 s and the longest envelope release past 57 s, so no finite length is honest.
+uint32_t latencyGet (const clap_plugin* plugin) { return of (plugin).engine.latencySamples(); }
+const clap_plugin_latency latencyExtension { latencyGet };
+uint32_t tailGet (const clap_plugin*) { return 0xffffffffu; }
+const clap_plugin_tail tailExtension { tailGet };
+
 const void* pluginExtension (const clap_plugin*, const char* id)
 {
     if (std::strcmp (id, CLAP_EXT_MELODEE_SCREEN) == 0) return &screenExtension;
+    if (std::strcmp (id, CLAP_EXT_LATENCY) == 0) return &latencyExtension;
+    if (std::strcmp (id, CLAP_EXT_TAIL) == 0) return &tailExtension;
     if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &paramsExtension;
     if (std::strcmp (id, CLAP_EXT_STATE) == 0) return &stateExtension;
     if (std::strcmp (id, CLAP_EXT_AUDIO_PORTS) == 0) return &audioExtension;
