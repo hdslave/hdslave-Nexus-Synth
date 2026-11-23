@@ -65,7 +65,6 @@
 namespace plaits
 {
 const int kNexusEngines = 24;
-const int kNexusTriggerDelay = 5;
 // What one voice's engines share (the module gives them 16 KB of its RAM).
 const size_t kNexusVoiceRam = 16384;
 
@@ -129,9 +128,6 @@ public:
     void Init (stmlib::BufferAllocator* allocator);
     // Renders `size` (at most kMaxBlockSize) samples of both outputs.
     void Render (const NexusPatch& patch, const NexusModulations& modulations, float* out, float* aux, size_t size);
-    int active_engine() const { return previous_engine_index_; }
-    // How open the low-pass gate is now (1 when it is bypassed).
-    float lpg_gain() const { return lpg_bypassed_ ? 1.0f : lpg_envelope_.gain(); }
     // Back to silence: the gate shut, the trigger low, the engine reset at the next render.
     void Silence();
 

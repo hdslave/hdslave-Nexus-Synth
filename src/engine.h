@@ -402,7 +402,6 @@ public:
             if (events[i].type != Ev::clock) return false;
         return true;
     }
-    uint32_t hostRate() const { return hostHz; }
     // The note-to-sound delay in host samples, as a group delay: the stamp delay, the four blocks the trigger waits
     // in plaits_voice.cc, and up to a block waiting for the next 12-sample tick. A voice's own attack is not part of
     // it. Renders put a Ping onset's first sample at or below this (the resampler's reach sounds a touch early).
