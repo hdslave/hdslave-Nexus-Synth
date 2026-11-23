@@ -931,7 +931,12 @@ private:
             const bool synced = v (ParamId::lfo1Sync + o) >= 0.5f;
             const bool locked = synced && playing && v (ParamId::lfo1Retrig + o) < 0.5f;
             advanceLfo (lfoGlobal[l], l, lfoHz (l), locked, divBeats[std::clamp (iv (ParamId::lfo1Div + o), 0, 10)]);
-            lfoNow[l] = lfoGlobal[l].value (iv (ParamId::lfo1Shape + o), v (ParamId::lfo1Phase + o));
+            // As with a voice's own LFOs: the phase (and its random draws on a wrap) always advances; only the
+            // value is skipped when no route takes this LFO. value() is pure, and the page's view is valued in
+            // publishTelemetry().
+            lfoNow[l] = sourceUsed[l == 0 ? Source::lfo1 : Source::lfo2]
+                            ? lfoGlobal[l].value (iv (ParamId::lfo1Shape + o), v (ParamId::lfo1Phase + o))
+                            : 0.0f;
         }
         // Cycle: rise then fall, again and again.
         {
@@ -996,7 +1001,14 @@ private:
             tel->keys[i].store (voices[i].active ? voices[i].key : -1, std::memory_order_relaxed);
             tel->levels[i].store (voices[i].active ? voices[i].peak : 0.0f, std::memory_order_relaxed);
         }
-        tel->lfo[0].store (lfoNow[0], std::memory_order_relaxed), tel->lfo[1].store (lfoNow[1], std::memory_order_relaxed);
+        // The shared LFOs as the page shows them, valued here when no route took them (tickModulators skipped
+        // the value; the state it reads is the last tick's, so this is the same float).
+        for (int l = 0; l < 2; ++l)
+            tel->lfo[l].store (sourceUsed[l == 0 ? Source::lfo1 : Source::lfo2]
+                                   ? lfoNow[l]
+                                   : lfoGlobal[l].value (iv (ParamId::lfo1Shape + 7u * (uint32_t) l),
+                                                         v (ParamId::lfo1Phase + 7u * (uint32_t) l)),
+                               std::memory_order_relaxed);
         tel->cycle.store (cycleNow, std::memory_order_relaxed), tel->random.store (rndValue, std::memory_order_relaxed);
         tel->wheel.store (wheel, std::memory_order_relaxed), tel->pressure.store (channelPressure, std::memory_order_relaxed);
         if (newest >= 0)

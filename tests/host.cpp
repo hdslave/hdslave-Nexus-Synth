@@ -1219,6 +1219,25 @@ void testQueueFlood()
     CHECK (small.l == large.l && small.r == large.r);
     CHECK (a.value (harmonics) == 0.25);
 }
+
+// A shared (not per-voice) LFO no route takes is not evaluated for sound: its shape, rate and phase cannot move
+// the output by a bit, while the same LFO routed plainly does (so the comparison can hear it). Pins the skip in
+// tickModulators (the phase still advances; only the pure value is left unevaluated).
+void testUnroutedLfo()
+{
+    using namespace ParamId;
+    auto renderWith = [] (double shape, double rateKnob, double phase, double amount) {
+        Instance a;
+        return a.render (48000, { P (0, model, 8), P (0, lfo1Shape, shape), P (0, lfo1Rate, rateKnob),
+                                  P (0, lfo1Phase, phase), P (0, route (0, 0), amount), On (0, 60), Off (24000, 60) });
+    };
+    const auto unroutedA = renderWith (LfoShape::sine, 0.9, 0.0, 0.0);
+    const auto unroutedB = renderWith (LfoShape::square, 0.2, 0.5, 0.0);
+    CHECK (rms (unroutedA.l, 4800, 24000) > 1e-3);
+    CHECK (unroutedA.l == unroutedB.l && unroutedA.r == unroutedB.r);
+    const auto routed = renderWith (LfoShape::sine, 0.9, 0.0, 0.5);
+    CHECK (routed.l != unroutedA.l || routed.r != unroutedA.r);
+}
 } // namespace
 
 int main (int argc, char** argv)
@@ -1258,6 +1277,7 @@ int main (int argc, char** argv)
     run ("playertext", testPlayerText);
     run ("latencytail", testLatencyTail);
     run ("queueflood", testQueueFlood);
+    run ("unroutedlfo", testUnroutedLfo);
     entry->deinit();
     std::printf ("%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
