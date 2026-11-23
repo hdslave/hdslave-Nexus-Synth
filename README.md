@@ -19,7 +19,7 @@ Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melo
 
 The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.1). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.2). Not yet run on the MPC itself.
 
 ## Install
 
@@ -29,13 +29,13 @@ instead.
 
 ## Playing it
 
-![Nexus PLAITS page with Wavetable selected](docs/nexus-plaits.png)
+![Nexus MODEL page with Wavetable selected](docs/nexus-plaits.png)
 
 Use Minus and Plus to move through the seven pages. [Watch the screen tour in Melodee](docs/nexus-pages.gif).
 
 | Page | What it holds |
 |---|---|
-| PLAITS | Model number and bank grid beside the live output scope. FREQ, HARM, TIMBRE and MORPH each show their value, and the three macros show their role in the current model. The bottom row holds T ATT, FM ATT, M ATT, AMP, COLOR, DECAY and AUX. |
+| MODEL | Model number and bank grid beside the live output scope. FREQ, HARM, TIMBRE and MORPH each show their value, and the three macros show their role in the current model. The bottom row holds T ATT, FM ATT, M ATT, AMP, COLOR, DECAY and AUX. |
 | VOICE | MODE, NOTES, UNISON, DETUNE, SPREAD, PAN, GLIDE, BEND, VEL (curve), AT (curve), FILTER, CUTOFF, RESO; the eight voices at work and the keys held; the filter's response and where a modulated cutoff is |
 | ENV | Env 1 and Env 2 (attack, decay, sustain, release, retrigger), each drawn with where it is now; VOLUME; TRIG (the retrigger rate) |
 | LFO | LFO 1 and 2: shape, rate, phase, sync, division, retrigger, per voice; each drawn, moving while it plays |
@@ -161,7 +161,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
-- `tests/host.cpp` (273,241 checks):
+- `tests/host.cpp` (281,288 checks):
   - the description and ports
   - every parameter's text both ways, state, presets
   - A4 at 440 Hz at 22.05 to 96 kHz
@@ -181,6 +181,8 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     notes, chokes and All Sound Off fading within a block instead of stepping
   - sleeping when silent
   - the page (its pictures in `build/`)
+  - no hardware names in what a player reads; the reported delay against rendered onsets; a flood past the event
+    queue sounding the same at any block size; states claiming another version refused
 - `tests/fingerprint.cpp`: a hash of every output sample over 64 scenarios: each preset and each model, the voice
   modes, Slide and Tie, the modulators, the filters, three other rates and four block sizes.
 - In Melodee's own host: `clap_check` (loads and plays it as Melodee does) and `melodee --melodee-plugin-screen`
@@ -191,19 +193,24 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
 
 | Case | Instructions a block |
 |---|---|
-| Worst: eight 6-op FM voices, every route on, a resonant filter | 589,600 (about 12 % of one core) |
-| Pad: the Wavetable Pad, four notes | 242,400 |
-| Typical: the Saw Lead playing a line | 117,800 |
-| Silent | 11,000 |
+| Worst: eight 6-op FM voices, every route on, a resonant filter | 587,000 (about 12 % of one core) |
+| Pad: the Wavetable Pad, four notes | 239,500 |
+| Typical: the Saw Lead playing a line | 116,600 |
+| Silent | 11,400 |
 
-Eight voices of one model (eight keys held, `bench model:N`) cost from about 212,000 instructions a block (Chiptune,
-Speech: 4.4 % of a core) to 650,000 (Particle: 13.5 %); most models sit between 7 and 12 %.
+Eight voices of one model (eight keys held, `bench model:N`) cost from about 225,000 instructions a block (Chiptune,
+Speech: 4.7 % of a core) to 620,000 (Particle: 12.9 %); most models sit between 7 and 12 %.
 
 At other host rates the resampler adds a little: the pad costs 97 million instructions a second at 44.1 kHz (Melodee's
 default) against 91 million at 48 kHz, where samples pass as they are. Silent, the resampler skips its work.
 
-The PLAITS page averaged about 99,000 instructions per painted frame in the four-second pad benchmark. Silent voices cost nothing. When everything is silent,
+The MODEL page averaged about 100,000 instructions per painted frame in the four-second pad benchmark. Silent voices cost nothing. When everything is silent,
 the plug-in tells the host it may sleep.
+
+**Delay and tail.** A note sounds after a fixed delay the plug-in reports to the host: 83 samples at 44.1 kHz, 71 at
+48 kHz, 176 at 96 kHz (the resampler's reach, the module's four-block trigger delay and up to one 12-sample tick,
+measured against rendered onsets). The reported tail is unbounded: at their longest, a modal resonator rings past
+200 seconds, an envelope release past 57 seconds, and an inharmonic string still sounds minutes after its key.
 
 ## Licence
 
