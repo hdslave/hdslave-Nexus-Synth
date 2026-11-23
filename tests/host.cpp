@@ -1099,8 +1099,9 @@ void testScreen (const std::string& folder)
     now += 100;
     CHECK (! paint());
 }
-// Nothing a player reads names the hardware this follows: the description, parameter names and modules, choice
-// texts and the macro role labels the page shows. (Attribution lives in the README and THIRD_PARTY.md.)
+// Nothing a player reads names the hardware this follows: the description, parameter names, modules and page
+// labels, every choice text (not just each default), the page tabs and the macro role labels the page shows.
+// (Attribution lives in the README and THIRD_PARTY.md.)
 void testPlayerText()
 {
     const auto* d = factory->get_plugin_descriptor (factory, 0);
@@ -1112,16 +1113,33 @@ void testPlayerText()
     {
         clap_param_info info {};
         CHECK (a.params->get_info (a.plugin, i, &info));
+        const auto& row = paramTable[paramIndex (info.id)];
         for (const char* banned : { "Plaits", "Mutable", "808", "NES" })
         {
             CHECK (std::string (info.name).find (banned) == std::string::npos);
             CHECK (std::string (info.module).find (banned) == std::string::npos);
+            CHECK (std::string (row.label).find (banned) == std::string::npos);
         }
         char text[64] = {};
         CHECK (a.params->value_to_text (a.plugin, info.id, info.default_value, text, sizeof (text)));
         for (const char* banned : { "Plaits", "Mutable", "808", "NES" })
             CHECK (std::string (text).find (banned) == std::string::npos);
+        // Every choice a player can land on, through the host's own text and the table the page draws from.
+        if (row.kind == Kind::choice)
+            for (int v = (int) row.min; v <= (int) row.max; ++v)
+            {
+                char choiceText[64] = {};
+                CHECK (a.params->value_to_text (a.plugin, info.id, (double) v, choiceText, sizeof (choiceText)));
+                for (const char* banned : { "Plaits", "Mutable", "808", "NES" })
+                {
+                    CHECK (std::string (choiceText).find (banned) == std::string::npos);
+                    CHECK (std::string (row.choices[v - (int) row.min]).find (banned) == std::string::npos);
+                }
+            }
     }
+    for (const char* tab : pageNames)
+        for (const char* banned : { "Plaits", "Mutable", "808", "NES" })
+            CHECK (std::string (tab).find (banned) == std::string::npos);
     for (const auto& role : modelRoles)
         for (const char* banned : { "Plaits", "Mutable", "808", "NES" })
         {

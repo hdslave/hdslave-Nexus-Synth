@@ -87,6 +87,11 @@ inline constexpr ModelRole modelRoles[modelCount] = {
     { "Snappy", "Body/noise", "Decay", "Variant" },     { "Metallic", "HP cutoff", "Decay", "Variant" },
 };
 
+// The page's tabs, in the page order of screen.h (which checks the count against its own).
+inline const char* const pageNames[] = { "MODEL", "VOICE", "ENV", "LFO", "CYCLE", "MOD", "ASSIGN" };
+constexpr int pageNameCount = 7;
+static_assert (sizeof (pageNames) / sizeof (pageNames[0]) == pageNameCount, "a name a page");
+
 inline const char* const offOn[] = { "Off", "On" };
 inline const char* const ampChoices[] = { "Gate", "Ping", "Env", "Drone" };
 namespace Amp { enum : int { gate, ping, env, drone }; }

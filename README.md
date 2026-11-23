@@ -161,7 +161,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
-- `tests/host.cpp` (281,288 checks):
+- `tests/host.cpp` (285,449 checks):
   - the description and ports
   - every parameter's text both ways, state, presets
   - A4 at 440 Hz at 22.05 to 96 kHz

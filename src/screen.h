@@ -38,6 +38,7 @@ public:
     }
 
     enum Page { plaitsPage, voicePage, envPage, lfoPage, cyclePage, modPage, assignPage, pageCount };
+    static_assert (pageCount == pageNameCount, "a tab a page: pageNames in params.h follows this order");
 
     void knobs (uint32_t ids[3]) const
     {
@@ -287,14 +288,13 @@ private:
             for (int x = 0; x < wordmark::width; ++x)
                 r.px[y * r.w + x] = wordmark::palette[wordmark::rows[y][x] - ' '];
 
-        static const char* const names[pageCount] = { "MODEL", "VOICE", "ENV", "LFO", "CYCLE", "MOD", "ASSIGN" };
         // A slashed navigation strip. Its seven cuts double as the page indicator.
         for (int y = 0; y < 15; ++y)
         {
             const int left = 170 + (14 - y) / 2;
             r.box (left, 2 + y, 318 - left, 1, ink::acid);
         }
-        r.text (180, 6, names[page], ink::bg);
+        r.text (180, 6, pageNames[page], ink::bg);
         for (int i = 0; i < pageCount; ++i)
             for (int j = 0; j < 6; ++j)
                 r.box (256 + i * 8 + (5 - j) / 2, 7 + j, i == page ? 6 : 2, 1, ink::bg);
