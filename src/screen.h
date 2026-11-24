@@ -2,8 +2,8 @@
 //
 //   MODEL   the model (its bank's grid and name), FREQ HARMONICS TIMBRE MORPH, the attenuverters, the low-pass gate,
 //           OUT/AUX and a scope of what plays, with what the three macros do in this model.
-//   VOICE   voice mode, notes, unison, detune, spread, pan, glide, bend, velocity and pressure curves, the filter
-//           (with its response) and the eight voices at work.
+//   VOICE   voice mode, notes, unison, detune, spread, pan, glide, bend, velocity and pressure curves,
+//           velocity to timbre, the filter response and the eight voices at work.
 //   ENV     both ADSRs (drawn, with where each is now), volume and the retrigger rate.
 //   LFO     both LFOs (shape, rate, phase, sync, division, retrigger, per voice), each drawn and moving.
 //   CYCLE   the cycling envelope and the random source, drawn and moving.
@@ -154,6 +154,7 @@ private:
     static constexpr int headerH = 41, footerY = headerH + 142, footerH = hdui::height - footerY;
     static constexpr int scopeX = 102, scopeY = 2, scopeW = 216, scopeH = 49;
     static constexpr int16_t W = 50, H = 44, row0 = 2, row1 = 48, row2 = 94;
+    static constexpr int filterPlotX = 210, filterPlotW = 108, filterPlotH = 46;
     static constexpr int16_t col (int i) { return (int16_t) (2 + 52 * i); }
 
     static Layout layout (int p)
@@ -176,6 +177,7 @@ private:
             { velCurve, col (2), row1, W, H, plain, "VEL" }, { atCurve, col (3), row1, W, H, plain, "AT" },
             { filterMode, col (0), row2, W, 46, plain, "FILTER" }, { cutoff, col (1), row2, W, 46, plain, "CUTOFF" },
             { resonance, col (2), row2, W, 46, plain, "RESO" },
+            { velTimbre, col (3), row2, W, 46, plain, "VEL>TIM" },
         };
         static const Cell envCells[] = {
             { env1Attack, col (0), row0, W, H, plain, "ATK 1" }, { env1Decay, col (1), row0, W, H, plain, "DEC 1" },
@@ -319,7 +321,7 @@ private:
         switch (page)
         {
             case plaitsPage: scope (r, scopeX, scopeY); break;
-            case voicePage: voices (r, 210, row1, 108, H, sounding, gated), filterCurve (r, 158, row2, 160, 46); break;
+            case voicePage: voices (r, 210, row1, 108, H, sounding, gated), filterCurve (r, filterPlotX, row2, filterPlotW, filterPlotH); break;
             case envPage:
                 envCurve (r, 2, row2, 156, 46, 0, env1Shown);
                 envCurve (r, 162, row2, 156, 46, 1, env2Shown);
@@ -343,7 +345,8 @@ private:
             case plaitsPage: drew |= picture.region<scopeW, scopeH> (pixels, stride, false, scopeX, top + scopeY, [&] (Raster& r) { scope (r, 0, 0); }); break;
             case voicePage:
                 drew |= picture.region<108, H> (pixels, stride, false, 210, top + row1, [&] (Raster& r) { voices (r, 0, 0, 108, H, sounding, gated); });
-                drew |= picture.region<160, 46> (pixels, stride, false, 158, top + row2, [&] (Raster& r) { filterCurve (r, 0, 0, 160, 46); });
+                drew |= picture.region<filterPlotW, filterPlotH> (pixels, stride, false, filterPlotX, top + row2,
+                                                                    [&] (Raster& r) { filterCurve (r, 0, 0, filterPlotW, filterPlotH); });
                 break;
             case envPage:
                 drew |= picture.region<156, 46> (pixels, stride, false, 2, top + row2, [&] (Raster& r) { envCurve (r, 0, 0, 156, 46, 0, env1Shown); });
@@ -475,7 +478,7 @@ private:
         using namespace hdui;
         using namespace ParamId;
         if (id == harmonics) return ink::acid;
-        if (id == timbre || id == timbreAtt) return ink::pink;
+        if (id == timbre || id == timbreAtt || id == velTimbre) return ink::pink;
         if (id == morph || id == morphAtt) return ink::lilac;
         if (id == ampMode || id == lpgColor || id == lpgDecay) return ink::orange;
         if (id >= env1Attack && id <= env1Retrig) return ink::acid;
@@ -1086,7 +1089,7 @@ private:
             static const char* const to[] = { "PITCH", "HARM", "TIMB", "MORPH" };
             std::snprintf (s, n, "%s>%s", from[k / 4], to[k % 4]);
         }
-        else if (c.id >= assign0)
+        else if (c.style == matrix && c.id >= assign0)
         {
             const int k = (int) (c.id - assign0) / 2;
             std::snprintf (s, n, "%s>%s", sourceShort (ival (assignSource0 + (uint32_t) (k / 4))), targetShort (ival (assignTarget0 + (uint32_t) (k % 4))));

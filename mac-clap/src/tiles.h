@@ -104,16 +104,17 @@ struct TilesAccess
             }
             else if (tile == Screen::voicePage)
             {
-                // Filter response plot (x: 158..318, by: 94..140): 2D drag for Cutoff & Resonance
-                if (x >= 158 && x < 318 && by >= 94 && by < 140)
+                // Drag the filter response plot to set Cutoff and Resonance.
+                if (x >= Screen::filterPlotX && x < Screen::filterPlotX + Screen::filterPlotW
+                    && by >= Screen::row2 && by < Screen::row2 + Screen::filterPlotH)
                 {
                     out_spot->kind = HDSLAVE_HOTSPOT_PARAM;
                     out_spot->param_id = ParamId::cutoff;
                     out_spot->param_id_y = ParamId::resonance;
-                    out_spot->x = 158;
-                    out_spot->y = (int16_t) (Screen::headerH + 94);
-                    out_spot->w = 160;
-                    out_spot->h = 46;
+                    out_spot->x = Screen::filterPlotX;
+                    out_spot->y = Screen::headerH + Screen::row2;
+                    out_spot->w = Screen::filterPlotW;
+                    out_spot->h = Screen::filterPlotH;
                     out_spot->invert_y = true;
                     return true;
                 }

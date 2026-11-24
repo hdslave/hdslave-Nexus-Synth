@@ -349,13 +349,15 @@ void testState()
     Stream s;
     {
         Instance a;
-        a.render (256, { P (0, model, 5), P (0, harmonics, 0.25), P (0, route (2, 3), -0.5), P (0, assignTarget0 + 2, Target::pan) });
+        a.render (256, { P (0, model, 5), P (0, harmonics, 0.25), P (0, route (2, 3), -0.5), P (0, assignTarget0 + 2, Target::pan),
+                         P (0, velTimbre, -0.75) });
         CHECK (a.state->save (a.plugin, &s.out));
     }
     {
         Instance b;
         CHECK (b.state->load (b.plugin, &s.in));
         CHECK (b.value (model) == 5 && b.value (harmonics) == 0.25 && b.value (route (2, 3)) == -0.5 && b.value (assignTarget0 + 2) == Target::pan);
+        CHECK (b.value (velTimbre) == -0.75);
         Stream bad;
         bad.bytes = { 'N', 'O', 'P', 'E', 1, 0, 0, 0, 0, 0, 0, 0 };
         CHECK (! b.state->load (b.plugin, &bad.in));
@@ -368,6 +370,7 @@ void testState()
         odd.bytes.insert (odd.bytes.end(), (const uint8_t*) header, (const uint8_t*) header + 8);
         odd.bytes.insert (odd.bytes.end(), (const uint8_t*) pairs, (const uint8_t*) pairs + 16);
         CHECK (b.state->load (b.plugin, &odd.in));
+        CHECK (b.value (velTimbre) == 0.0);
         CHECK (b.value (morph) == 0.75 && b.value (model) == 8);
         // Only the written version loads: a blob claiming a newer (or zero) version is refused whole, values kept.
         for (uint32_t version : { 0u, 2u, 99u })
@@ -634,6 +637,23 @@ void testModulation()
         Instance a;
         const auto out = a.render (48000, sine ({ P (0, assign (1, 0), 1.0), P (0, assignTarget0, Target::pitch), On (0, 69, 0.5) }));
         CHECK_NEAR (semis (frequency (out.l, s, 9600, 48000)), 24.0 * depth (1.0f) * 0.5, 0.02);
+    }
+    // The dedicated route matches a velocity-to-timbre matrix route, including the velocity curve, on a chord.
+    auto velocityChord = [] (std::vector<Cue> settings, uint32_t block) {
+        settings.push_back (P (0, model, 0));
+        settings.push_back (P (0, velCurve, 2));
+        settings.push_back (On (0, 48, 0.4));
+        settings.push_back (On (0, 60, 0.8));
+        Instance a (44100.0);
+        return a.render (4800, settings, block);
+    };
+    const auto dry = velocityChord ({}, 128);
+    for (double amount : { -0.75, 0.75 })
+    {
+        const auto direct = velocityChord ({ P (0, velTimbre, amount) }, 37);
+        const auto matrix = velocityChord ({ P (0, assignTarget0 + 3, Target::timbre), P (0, assign (1, 3), amount) }, 128);
+        CHECK (direct.l == matrix.l && direct.r == matrix.r);
+        CHECK (direct.l != dry.l);
     }
     // The cycle: unipolar rises from 0 to the depth over Rise, falls over Fall.
     {
@@ -1050,8 +1070,16 @@ void testScreen (const std::string& folder)
     CHECK_NEAR (a.value (harmonics), 0.5 + 10.0 / 128.0, 1e-6);
     CHECK (rescans > before);
     in (MELODEE_SCREEN_PUSH, 0); // done
+    // Velocity to Timbre has an editable control on VOICE.
+    in (MELODEE_SCREEN_STEP, 1);
+    in (MELODEE_SCREEN_WHEEL, 13);
+    CHECK (knobs()[0] == velTimbre);
+    in (MELODEE_SCREEN_PUSH, 0);
+    in (MELODEE_SCREEN_WHEEL, -10);
+    CHECK (a.value (velTimbre) < 0.0);
+    in (MELODEE_SCREEN_PUSH, 0);
     // A switch flips on Push.
-    in (MELODEE_SCREEN_STEP, 1), in (MELODEE_SCREEN_STEP, 1);  // ENV
+    in (MELODEE_SCREEN_STEP, 1); // ENV
     in (MELODEE_SCREEN_WHEEL, 4);                             // RTRG 1
     CHECK (knobs()[0] == env1Retrig);
     in (MELODEE_SCREEN_PUSH, 0);

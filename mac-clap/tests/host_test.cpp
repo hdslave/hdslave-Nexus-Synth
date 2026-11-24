@@ -286,11 +286,25 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
     if (!params) return false;
     const uint32_t pCount = params->count (plug);
     std::set<std::string> modules;
+    bool expectedParam = std::strcmp (desc->id, "com.hdslave.nexus") != 0;
     for (uint32_t i = 0; i < pCount; ++i)
     {
         clap_param_info_t info {};
         if (params->get_info (plug, i, &info))
+        {
             modules.insert (info.module);
+            if (std::strcmp (info.name, "Velocity to Timbre") == 0)
+            {
+                double current = -1.0;
+                expectedParam = info.min_value == -1.0 && info.max_value == 1.0 && info.default_value == 0.0
+                    && (info.flags & CLAP_PARAM_IS_AUTOMATABLE) && params->get_value (plug, info.id, &current) && current == 0.0;
+            }
+        }
+    }
+    if (!expectedParam)
+    {
+        std::fprintf (stderr, "FAIL: missing or incorrect Velocity to Timbre parameter\n");
+        return false;
     }
 
     // 3. Verify CLAP_EXT_STATE round-trip

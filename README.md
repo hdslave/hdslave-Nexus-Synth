@@ -19,7 +19,7 @@ Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melo
 
 The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.3). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.4). Not yet run on the MPC itself.
 
 ## Install
 
@@ -35,7 +35,7 @@ Use Minus and Plus to move through the seven pages. [Watch the screen tour in Me
 | Page | What it holds |
 |---|---|
 | MODEL | Model number and bank grid beside the live output scope. FREQ, HARM, TIMBRE and MORPH each show their value, and the three macros show their role in the current model. The bottom row holds T ATT, FM ATT, M ATT, AMP, COLOR, DECAY and AUX. |
-| VOICE | MODE, NOTES, UNISON, DETUNE, SPREAD, PAN, GLIDE, BEND, VEL (curve), AT (curve), FILTER, CUTOFF, RESO; the eight voices at work and the keys held; the filter's response and where a modulated cutoff is |
+| VOICE | MODE, NOTES, UNISON, DETUNE, SPREAD, PAN, GLIDE, BEND, VEL (curve), AT (curve), FILTER, CUTOFF, RESO, VEL>TIM; the eight voices at work and the keys held; the filter's response and where a modulated cutoff is |
 | ENV | Env 1 and Env 2 (attack, decay, sustain, release, retrigger), each drawn with where it is now; VOLUME; TRIG (the retrigger rate) |
 | LFO | LFO 1 and 2: shape, rate, phase, sync, division, retrigger, per voice; each drawn, moving while it plays |
 | CYCLE | the cycling envelope (rise, fall, shape, bipolar, retrigger) and the random source (mode, rate, slew, sync, division, retrigger), drawn and moving |
@@ -76,6 +76,8 @@ SPREAD places them across the stereo field. There are eight voices in all, so NO
 fewer notes; past NOTES the oldest note lets go. A key played again while it still rings starts its own voice over.
 GLIDE (0-2 s, a time constant) slides between overlapping keys in every mode. BEND is the pitch-bend range (0-24
 semitones). VEL is the velocity curve (an exponent, 0.1-4). AT bends the pressure response (-1 soft to +1 quick).
+VEL>TIM (Velocity to Timbre) uses that velocity curve to modulate each note’s timbre. It ranges from −100% to
++100% and defaults to 0%. Positive values raise timbre more for harder hits, and negative values lower it more.
 The sustain pedal (CC 64) holds released keys.
 
 **Slide and Tie.** Melodee plays a step's Slide or Tie as CC 84 (the key it comes from) before the next key. The
@@ -192,10 +194,10 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
 
 | Case | Instructions a block |
 |---|---|
-| Worst: eight 6-op FM voices, every route on, a resonant filter | 587,000 (about 12 % of one core) |
-| Pad: the Wavetable Pad, four notes | 239,500 |
-| Typical: the Saw Lead playing a line | 116,600 |
-| Silent | 11,400 |
+| Worst: eight 6-op FM voices, every route on, a resonant filter | 588,000 (about 12 % of one core) |
+| Pad: the Wavetable Pad, four notes | 239,100 |
+| Typical: the Saw Lead playing a line | 116,200 |
+| Silent | 10,500 |
 
 Eight voices of one model (eight keys held, `bench model:N`) cost from about 225,000 instructions a block (Chiptune,
 Speech: 4.7 % of a core) to 620,000 (Particle: 12.9 %); most models sit between 7 and 12 %.

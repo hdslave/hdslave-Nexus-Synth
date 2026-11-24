@@ -13,7 +13,7 @@
 #include <strings.h>
 
 #ifndef NEXUS_VERSION
-#define NEXUS_VERSION "0.1.2"
+#define NEXUS_VERSION "0.1.4"
 #endif
 
 namespace nexus
@@ -38,9 +38,10 @@ enum : uint32_t
     assignSource0 = route0 + 2 * routeSources * routeTargets, // 4 sources
     assignTarget0 = assignSource0 + assignSlots,               // 4 targets
     assign0 = assignTarget0 + assignSlots, // source i to target j: amount at assign0 + 2 (4 i + j), its switch next
-    count = assign0 + 2 * assignSlots * assignSlots
+    velTimbre = assign0 + 2 * assignSlots * assignSlots,
+    count
 };
-static_assert (route0 == 62 && assignSource0 == 94 && assignTarget0 == 98 && assign0 == 102 && count == 134, "the ids are fixed");
+static_assert (route0 == 62 && assignSource0 == 94 && assignTarget0 == 98 && assign0 == 102 && velTimbre == 134, "the ids are fixed");
 inline constexpr uint32_t route (int source, int target) { return route0 + 2u * (uint32_t) (4 * source + target); }
 inline constexpr uint32_t assign (int source, int target) { return assign0 + 2u * (uint32_t) (4 * source + target); }
 } // namespace ParamId
@@ -262,6 +263,7 @@ inline const Param* makeTable()
                 b.add (assign (s, t) + 1, n[1], "ON", "Assign", 0, 1, 1, K::choice, U::onOff, offOn);
             }
     }
+    b.add (velTimbre, "Velocity to Timbre", "VEL>TIM", "Voice", -1, 1, 0, K::continuous, U::amount);
     return b.list;
 }
 

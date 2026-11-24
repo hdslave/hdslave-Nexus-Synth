@@ -40,6 +40,7 @@ int main (int argc, char** argv)
         param (model, 2), param (notes, 1), param (unison, 8), param (detune, 0.3), param (resonance, 0.8), param (cutoff, 0.5);
         param (ampMode, nexus::Amp::drone);
         for (int s = 0; s < 4; ++s) for (int t = 0; t < 4; ++t) param (route (s, t), 0.2), param (assign (s, t), 0.2);
+        param (velTimbre, 0.2);
         param (lfo1PerVoice, 1), param (lfo2PerVoice, 1);
         note (first, 0, 0x90, 48, 110);
     }

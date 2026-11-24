@@ -354,8 +354,8 @@ public:
     {
         if (id >= (uint32_t) paramCount) return;
         // Inactive: only the value is kept; what derives from it (envelope coefficients, the route list, the glide)
-        // is rebuilt once when the engine is next prepared or reset, so a bulk load of all 134 values derives once,
-        // not 134 times. Nothing reads the derived state while inactive.
+        // is rebuilt once when the engine is next prepared or reset, so a bulk load derives once,
+        // after all parameter values are in place. Nothing reads the derived state while inactive.
         if (! prepared) { value[id] = v, dirty = true; return; }
         push (Ev { 0, Ev::param, 0, (uint16_t) id, v, 0.0 });
     }
@@ -503,6 +503,9 @@ private:
                     routes[routeCount++] = { (uint8_t) source, (uint8_t) target, depth (amount) };
             }
         }
+        const float velTimbre = v (ParamId::velTimbre);
+        if (velTimbre != 0.0f)
+            routes[routeCount++] = { Source::velocity, Target::timbre, depth (velTimbre) };
         for (bool& used : sourceUsed) used = false;
         for (int r = 0; r < routeCount; ++r) sourceUsed[routes[r].source] = true;
         glideCoef = onePole (glideMs (v (ParamId::glide)));
@@ -1250,7 +1253,7 @@ private:
     bool dirty = true, prepared = false;
     Adsr::Coefficients env1c {}, env2c {};
     struct Route { uint8_t source, target; float depth; };
-    Route routes[routeSources * routeTargets + assignSlots * assignSlots] {};
+    Route routes[routeSources * routeTargets + assignSlots * assignSlots + 1] {};
     int routeCount = 0;
     bool sourceUsed[Source::count] {}; // a route takes this source (derive()); unrouted sources are not evaluated
     float glideCoef = 1.0f, slideCoef = 1.0f;

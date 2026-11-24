@@ -479,6 +479,9 @@ private:
                     routes[routeCount++] = { (uint8_t) source, (uint8_t) target, depth (amount) };
             }
         }
+        const float velTimbre = v (ParamId::velTimbre);
+        if (velTimbre != 0.0f)
+            routes[routeCount++] = { Source::velocity, Target::timbre, depth (velTimbre) };
         glideCoef = onePole (glideMs (v (ParamId::glide)));
         slideCoef = onePole (glideMs (v (ParamId::glide)) > 0.0f ? glideMs (v (ParamId::glide)) : 60.0f);
         dirty = false;
@@ -1185,7 +1188,7 @@ private:
     bool dirty = true, prepared = false;
     Adsr::Coefficients env1c {}, env2c {};
     struct Route { uint8_t source, target; float depth; };
-    Route routes[routeSources * routeTargets + assignSlots * assignSlots] {};
+    Route routes[routeSources * routeTargets + assignSlots * assignSlots + 1] {};
     int routeCount = 0;
     float glideCoef = 1.0f, slideCoef = 1.0f;
 
