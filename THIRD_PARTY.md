@@ -6,7 +6,7 @@
 | stmlib | Emilie Gillet's DSP and utility library, MIT licence, from [pichenettes/stmlib](https://github.com/pichenettes/stmlib) at the commit eurorack pins. [Licence](licenses/LICENSE-MIT-mutable-instruments.txt) |
 | CLAP headers | The CLAP plug-in API, MIT licence. [Licence](third_party/clap/LICENSE) |
 | Departure Mono | Copyright 2022-2024 Helena Zhang. SIL Open Font License 1.1. The page's glyphs (`src/ui/font.h`). [Licence](licenses/OFL-departure-mono.txt) |
-| `src/melodee_screen.h` | Melodee's plug-in screen extension (hdslaveOS), MIT licence, as its header says. |
+| `src/melodee_screen.h` | Melodee screen SDK by Kerem Kiliç (Ellic Studio), [MIT licence](licenses/MIT-melodee-screen.txt). |
 
 "Plaits" and "Mutable Instruments" are named only to say where the code comes from; Nexus is not made or endorsed
 by Mutable Instruments.

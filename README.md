@@ -19,13 +19,12 @@ Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melo
 
 The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.2). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.3). Not yet run on the MPC itself.
 
 ## Install
 
 Copy the folder `hdslave Nexus` (the `.clap`, this README and `licenses/`) to `Melodee/Plugins/` on the card. Pick
-it on a PLUGIN track (SYNTH on Stage). Its page needs hdslaveOS; in stock Melodee you get the list of its parameters
-instead.
+it on a PLUGIN track (SYNTH on Stage). The custom screen uses `melodee.screen/1` on Melodee 0.7 and hdslaveOS based on it. Open Edit on the plug-in track or select PANEL on Stage.
 
 ## Playing it
 
