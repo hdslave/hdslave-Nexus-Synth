@@ -2,7 +2,16 @@
 
 **An 8-voice polyphonic macro-oscillator synthesizer powered by all 24 Mutable Instruments Plaits models, as a CLAP plug-in for the Akai MPC Sample.**
 
-![Nexus seven acid-rave pages running in hdslaveOS](docs/nexus-pages.gif)
+<table>
+  <tr>
+    <th width="34%">MPC Sample</th>
+    <th width="66%">macOS and Windows · CLAP</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/nexus-pages.gif"><img src="docs/nexus-pages.gif" alt="Nexus seven acid-rave pages running in hdslaveOS"></a></td>
+    <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Nexus macro oscillator, envelopes and modulation pages during playback"></a></td>
+  </tr>
+</table>
 
 > **Desktop CLAP version (macOS & Windows):** A separate desktop CLAP build with all MPC screens on one interactive panel lives in [**`mac-clap/`**](mac-clap/) (`cd mac-clap && ./install-macos.sh`). Releases in this repo stay MPC Sample-only for now while the desktop builds are being finalized.
 
