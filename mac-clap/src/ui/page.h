@@ -48,7 +48,7 @@ struct Host
     bool shift = false, playing = false;
 };
 
-enum class Key : uint8_t { wheel = 0, push = 1, nudge = 2 }; // as MELODEE_SCREEN_WHEEL, _PUSH, _NUDGE
+enum class Key : uint8_t { wheel = 0, push = 1, nudge = 2 }; // as MELODEE_SCREEN_WHEEL, _PUSH, _STEP
 
 // What an input did: parameters set (plain values) and buttons pressed.
 struct Edits

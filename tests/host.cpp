@@ -42,13 +42,13 @@ const void* hostExtension (const clap_host*, const char* id)
 {
     static const clap_host_params params { [] (const clap_host*, clap_param_rescan_flags f) { rescans += (f & CLAP_PARAM_RESCAN_VALUES) != 0; },
                                            [] (const clap_host*, clap_id, clap_param_clear_flags) {}, [] (const clap_host*) { ++flushes; } };
-    static const clap_host_melodee_screen screen { [] (const clap_host*) { ++paints; } };
+    static const melodee_screen_host_t screen { [] (const void*, uint32_t) { ++paints; } };
     static const clap_host_preset_load presetLoad {
         [] (const clap_host*, uint32_t, const char*, const char*, int32_t, const char*) { ++presetErrors; },
         [] (const clap_host*, uint32_t, const char*, const char*) { ++presetsLoaded; },
     };
     static const clap_host_latency latency { [] (const clap_host*) { ++latencyNotices; } };
-    if (std::strcmp (id, CLAP_EXT_MELODEE_SCREEN_HOST) == 0) return &screen;
+    if (std::strcmp (id, MELODEE_SCREEN_CLAP_HOST) == 0) return &screen;
     if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &params;
     if (std::strcmp (id, CLAP_EXT_LATENCY) == 0) return &latency;
     if (std::strcmp (id, CLAP_EXT_PRESET_LOAD) == 0) return &presetLoad;
@@ -273,7 +273,7 @@ void testDescription()
     CHECK (audio->get (a.plugin, 0, false, &ai) && ai.channel_count == 2);
     clap_note_port_info ni {};
     CHECK (notes && notes->get (a.plugin, 0, true, &ni) && (ni.supported_dialects & CLAP_NOTE_DIALECT_MIDI));
-    CHECK (a.plugin->get_extension (a.plugin, CLAP_EXT_MELODEE_SCREEN) != nullptr);
+    CHECK (a.plugin->get_extension (a.plugin, MELODEE_SCREEN_CLAP) != nullptr);
 }
 
 void testParams()
@@ -1023,18 +1023,19 @@ void testScreen (const std::string& folder)
 {
     using namespace ParamId;
     Instance a;
-    const auto* screen = static_cast<const clap_plugin_melodee_screen*> (a.plugin->get_extension (a.plugin, CLAP_EXT_MELODEE_SCREEN));
+    const auto* screen = static_cast<const melodee_screen_t*> (a.plugin->get_extension (a.plugin, MELODEE_SCREEN_CLAP));
     std::vector<uint32_t> pixels (320 * 218, 0);
-    melodee_screen_canvas_t canvas {};
-    canvas.pixels = pixels.data();
-    canvas.width = 320, canvas.height = 218, canvas.stride = 320;
-    canvas.accent = 0xff3ee6ff;
-    for (auto& k : canvas.knobs) k.position = -1, k.engaged = true;
+    melodee_screen_frame_t frame {};
+    frame.pixels = pixels.data();
+    frame.width = 320, frame.height = 218, frame.stride = 320;
+    frame.area = MELODEE_SCREEN_PAGE;
+    frame.colour = 0x003ee6ffu;
+    for (int k = 0; k < 3; ++k) frame.pots[k] = -1, frame.pots_live[k] = 1;
     uint64_t now = 1000;
-    auto paint = [&] (bool whole = false) { canvas.whole = whole, canvas.now_ms = now; return screen->paint (a.plugin, &canvas); };
+    auto paint = [&] (bool whole = false) { frame.redraw_all = whole ? 1u : 0u, frame.time_ms = now; return screen->draw (a.plugin, &frame); };
     auto shot = [&] (const std::string& name) { paint (true); CHECK (writePng ((folder + "/screen-" + name + ".png").c_str(), pixels.data(), 320, 218, 320, 2)); };
-    auto in = [&] (uint32_t kind, int value, bool shift = false) { melodee_screen_input_t e { kind, value, shift }; return screen->input (a.plugin, &e); };
-    auto knobs = [&] () { std::vector<clap_id> ids (3); screen->knobs (a.plugin, ids.data()); return ids; };
+    auto in = [&] (uint32_t kind, int value, bool shift = false) { melodee_screen_input_t e { kind, value, shift ? 1u : 0u }; return screen->input (a.plugin, &e); };
+    auto knobs = [&] () { std::vector<uint32_t> ids (3); screen->controls (a.plugin, ids.data()); return ids; };
 
     CHECK (paint (true));
     CHECK (! paint()); // nothing changed
@@ -1050,18 +1051,18 @@ void testScreen (const std::string& folder)
     CHECK (rescans > before);
     in (MELODEE_SCREEN_PUSH, 0); // done
     // A switch flips on Push.
-    in (MELODEE_SCREEN_NUDGE, 1), in (MELODEE_SCREEN_NUDGE, 1);  // ENV
-    in (MELODEE_SCREEN_WHEEL, 4);                                // RTRG 1
+    in (MELODEE_SCREEN_STEP, 1), in (MELODEE_SCREEN_STEP, 1);  // ENV
+    in (MELODEE_SCREEN_WHEEL, 4);                             // RTRG 1
     CHECK (knobs()[0] == env1Retrig);
     in (MELODEE_SCREEN_PUSH, 0);
     CHECK (a.value (env1Retrig) == 0);
     // A matrix: Shift + Push turns a route off.
-    in (MELODEE_SCREEN_NUDGE, 1), in (MELODEE_SCREEN_NUDGE, 1), in (MELODEE_SCREEN_NUDGE, 1); // MOD
+    in (MELODEE_SCREEN_STEP, 1), in (MELODEE_SCREEN_STEP, 1), in (MELODEE_SCREEN_STEP, 1); // MOD
     CHECK (knobs()[0] == route (0, 0));
     in (MELODEE_SCREEN_PUSH, 0, true);
     CHECK (a.value (route (0, 0) + 1) == 0);
-    in (MELODEE_SCREEN_NUDGE, -1), in (MELODEE_SCREEN_NUDGE, -1), in (MELODEE_SCREEN_NUDGE, -1), in (MELODEE_SCREEN_NUDGE, -1),
-        in (MELODEE_SCREEN_NUDGE, -1);
+    in (MELODEE_SCREEN_STEP, -1), in (MELODEE_SCREEN_STEP, -1), in (MELODEE_SCREEN_STEP, -1), in (MELODEE_SCREEN_STEP, -1),
+        in (MELODEE_SCREEN_STEP, -1);
     CHECK (knobs()[0] == harmonics);
 
     // Every page, silent and then sounding (a chord on the Wavetable Pad).
@@ -1071,7 +1072,7 @@ void testScreen (const std::string& folder)
     for (int p = 0; p < 7; ++p)
     {
         shot (std::string (names[p]) + "-idle");
-        in (MELODEE_SCREEN_NUDGE, 1);
+        in (MELODEE_SCREEN_STEP, 1);
     }
     a.render (48000, { On (0, 60, 0.9), On (0, 64, 0.8), On (0, 67, 0.7), On (0, 71, 0.6) });
     for (int p = 0; p < 7; ++p)
@@ -1086,12 +1087,12 @@ void testScreen (const std::string& folder)
         const auto partial = pixels;
         paint (true);
         CHECK (partial == pixels);
-        in (MELODEE_SCREEN_NUDGE, 1);
+        in (MELODEE_SCREEN_STEP, 1);
     }
     // The legend with Shift.
-    canvas.shift = true;
+    frame.shift = 1;
     shot ("legend");
-    canvas.shift = false;
+    frame.shift = 0;
     // Silent again: no more frames.
     a.render (4800, { Off (0, 60), Off (0, 64), Off (0, 67), Off (0, 71) });
     a.render (480000, {});
