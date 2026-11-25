@@ -8,7 +8,7 @@
     <th width="66%">macOS and Windows · CLAP</th>
   </tr>
   <tr>
-    <td align="center"><a href="docs/nexus-pages.gif"><img src="docs/nexus-pages.gif" alt="Nexus seven acid-rave pages running in hdslaveOS"></a></td>
+    <td align="center"><a href="docs/nexus-pages.gif"><img src="docs/nexus-pages.gif" alt="Nexus model, voice, and LFO screens running in hdslaveOS"></a></td>
     <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Nexus macro oscillator, envelopes and modulation pages during playback"></a></td>
   </tr>
 </table>
