@@ -558,8 +558,9 @@ private:
     }
 
     // The notes held (keys down or the pedal), not counting key `except`; `victim`: the one to let go first, the oldest
-    // the pedal holds, else the oldest key.
-    int heldNotes (uint32_t* victim, int except) const
+    // the pedal holds, else the oldest key. `dueToo`: also a note let go before it has played a block (it still holds
+    // its voices for that block); NOTES counts without them.
+    int heldNotes (uint32_t* victim, int except, bool dueToo = true) const
     {
         uint32_t seen[maxVoices];
         int count = 0;
@@ -567,7 +568,7 @@ private:
         bool anyHeld = false, anyPedal = false; // (a voice let go for a new note has age 0)
         for (const auto& vc : voices)
         {
-            if (! vc.active || ! vc.gate || vc.key == except) continue;
+            if (! vc.active || ! vc.gate || vc.key == except || (vc.releaseDue && ! dueToo)) continue;
             bool known = false;
             for (int k = 0; k < count; ++k) known |= seen[k] == vc.note;
             if (known) continue;
@@ -662,7 +663,7 @@ private:
             // pitch against each other. Past NOTES (other keys held), the oldest note lets go.
             const int maxNotes = std::max (1, std::min (iv (ParamId::notes), maxVoices / u));
             uint32_t victim = 0;
-            const int others = heldNotes (&victim, key);
+            const int others = heldNotes (&victim, key, false);
             if (others >= maxNotes)
                 for (auto& vc : voices)
                     if (vc.active && vc.gate && vc.note == victim) release (vc), vc.age = 0;

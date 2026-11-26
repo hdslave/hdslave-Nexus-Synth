@@ -848,6 +848,27 @@ void testReview()
             CHECK (level (out.l, 48000.0, hz (keys[i]), 24000, 48000) > 0.02);
         }
     }
+    // NOTES 2, four keys on one frame (a chord as hdslaveOS sends it), unison 1 and 3: the two newest stay, as when the
+    // keys come apart. To 0.1.5 three stayed: the first key, let go for the third before it had played a block, still
+    // counted as held, and was chosen again for the fourth.
+    for (int u : { 1, 3 })
+        for (bool apart : { false, true })
+        {
+            Instance a;
+            std::vector<Cue> c = sine ({ P (0, notes, 2), P (0, unison, u), P (0, detune, 0), P (0, env1Release, 0) });
+            const int keys[4] = { 57, 60, 64, 67 };
+            for (int i = 0; i < 4; ++i) c.push_back (On (apart ? 100 + 600 * (uint64_t) i : 100, keys[i], 1.0));
+            const auto out = a.render (48000, c);
+            for (int i = 0; i < 4; ++i)
+            {
+                const double l = level (out.l, 48000.0, hz (keys[i]), 24000, 48000);
+                const bool stays = i >= 2;
+                if (stays != (l > 0.02))
+                    std::printf ("  NOTES 2, unison %d, four keys %s: key %d %s (level %g)\n", u, apart ? "apart" : "on one frame", keys[i],
+                                 stays ? "was cut" : "still sounds", l);
+                CHECK (stays ? l > 0.02 : l < 0.002);
+            }
+        }
     // Reset All Controllers lifts the sustain pedal.
     {
         Instance a;

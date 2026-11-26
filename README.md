@@ -28,7 +28,7 @@ Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melo
 
 The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.5). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.6). Not yet run on the MPC itself.
 
 ## Install
 
@@ -171,7 +171,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
-- `tests/host.cpp` (301,991 checks):
+- `tests/host.cpp` (303,519 checks):
   - the description and ports
   - every parameter's text both ways, state, presets
   - A4 at 440 Hz at 22.05 to 96 kHz
@@ -188,7 +188,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     Mono, the filter coming back in
   - a second review: values queued before a deactivation, the note let go when a chord outruns the voices in
     one block, Reset All Controllers and the pedal, sleeping in small host blocks, a key replayed after unison was
-    lowered, note-offs by CLAP note id
+    lowered, note-offs by CLAP note id, NOTES 2 holding two of four keys struck on one frame
   - a third review: the output within +-1 and untouched below about -2 dBFS, a held note's id still known after 32 more
     notes, chokes and All Sound Off fading within a block instead of stepping
   - sleeping when silent
