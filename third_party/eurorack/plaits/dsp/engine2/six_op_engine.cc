@@ -88,9 +88,20 @@ void SixOpEngine::Init(BufferAllocator* allocator) {
 }
 
 void SixOpEngine::Reset() {
-  // Nexus: the tail of the staggered rendering waits in the RAM all engines
-  // share, and the next Render() plays it. After another engine has used that
-  // RAM, or after the voice was silenced, it is not this engine's sound.
+  // Nexus: the engine starts again as Init() left it. The tail of the
+  // staggered rendering waits in the RAM all engines share, and the next
+  // Render() plays it: after another engine has used that RAM, or after the
+  // voice was silenced, it is not this engine's sound. And LoadUserData()
+  // unloads the FM voices' patches, so a voice whose note was cut never sees
+  // its gate fall: it keeps its gate and its envelopes where the note left
+  // them, and the next note it is given has no attack and the old note's key
+  // and velocity scaling.
+  patch_index_quantizer_.Init(32, 0.005f, false);
+  for (int i = 0; i < kNumSixOpVoices; ++i) {
+    voice_[i].Init(&algorithms_, kCorrectedSampleRate);
+  }
+  active_voice_ = kNumSixOpVoices - 1;
+  rendered_voice_ = 0;
   fill(
       &acc_buffer_[0],
       &acc_buffer_[kMaxBlockSize * kNumSixOpVoices],

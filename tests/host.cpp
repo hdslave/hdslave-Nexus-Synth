@@ -1050,7 +1050,8 @@ void testModels (const std::string& folder)
 // A model takes over the RAM its voice's models share as the last one left it. The 6-op models keep the tail of their
 // staggered rendering there and play it in their first block, so they clear it when they take over. After Particle,
 // whose diffuser fills that RAM with 16-bit words (read as floats, its small negative samples are NaN), the output
-// stays finite; and a 6-op note is the same, sample for sample, whatever other model the voice played before.
+// stays finite; and a 6-op note is the same, sample for sample, whatever model the voice played before, a 6-op one
+// too. (The three 6-op models are one engine, but it starts again at every model change and after every choke.)
 void testModelSwitch()
 {
     using namespace ParamId;
@@ -1070,7 +1071,6 @@ void testModelSwitch()
         Stereo first;
         for (int prev = 0; prev < modelCount; ++prev)
         {
-            if (prev >= 2 && prev <= 4) continue; // (the three 6-op models are one engine: it keeps its own state)
             Instance a;
             const auto out = a.render (30000, { P (0, model, prev), P (0, ampMode, Amp::drone), On (0, 60, 1.0), { 6000, Cue::choke, 60, 0.0, 0 },
                                                 P (12000, model, fm), On (18000, 60, 1.0) });
@@ -1084,6 +1084,44 @@ void testModelSwitch()
             CHECK (same);
         }
     }
+    // A note cut while it plays (a choke, All Sound Off, or the model changed under the held key, to any other model or
+    // to another 6-op bank, and changed back) leaves the FM voices nothing of it: the next notes have their attack and
+    // their own key and velocity, the same, sample for sample, as the same notes in an instance that never played. The
+    // engine keeps two FM voices and gives each new note the other one, so the second note reaches the voice that was
+    // cut. Mono, so one Nexus voice plays them all; Gate and Ping, as the stale gate showed in both.
+    for (int fm = 2; fm <= 4; ++fm)
+        for (int amp : { (int) Amp::gate, (int) Amp::ping })
+        {
+            auto play = [&] (int how) {
+                Instance a;
+                std::vector<Cue> c { P (0, model, fm), P (0, ampMode, amp), P (0, voiceMode, VoiceMode::mono), P (0, harmonics, 0.5) };
+                if (how > 0) c.push_back (On (0, 60, 1.0));
+                if (how == 1) c.push_back ({ 24000, Cue::choke, 60, 0.0, 0 });
+                else if (how == 2) c.push_back (Midi (24000, 0xb0, 120, 0));
+                else if (how >= 3)
+                    c.push_back (P (24000, model, how == 3 ? 0 : 2 + (fm - 1) % 3)), c.push_back (P (26000, model, fm)),
+                        c.push_back (Off (28000, 60));
+                for (uint64_t at : { 36000, 60000 }) c.push_back (On (at, 64, 0.7)), c.push_back (Off (at + 12000, 64));
+                return a.render (72000, c);
+            };
+            const auto fresh = play (0);
+            for (int how = 1; how <= 4; ++how)
+            {
+                const auto cut = play (how);
+                for (uint64_t at : { 36000, 60000 })
+                {
+                    CHECK (rms (fresh.l, at, at + 12000) > 1e-3);
+                    const bool same = std::equal (cut.l.begin() + at, cut.l.begin() + at + 12000, fresh.l.begin() + at)
+                                      && std::equal (cut.r.begin() + at, cut.r.begin() + at + 12000, fresh.r.begin() + at);
+                    if (! same)
+                        std::printf ("  model %d (%s), %s, the note at %d after %s: rms %.4f, not %.4f\n", fm, modelChoices[fm],
+                                     amp == Amp::gate ? "Gate" : "Ping", (int) at,
+                                     how == 1 ? "a choke" : how == 2 ? "CC 120" : how == 3 ? "a model change" : "another 6-op bank",
+                                     rms (cut.l, at, at + 2400), rms (fresh.l, at, at + 2400));
+                    CHECK (same);
+                }
+            }
+        }
 }
 
 // Silent: the host may let it sleep; sounding: not.

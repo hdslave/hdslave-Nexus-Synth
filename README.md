@@ -28,7 +28,7 @@ Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melo
 
 The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.6). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.7). Not yet run on the MPC itself.
 
 ## Install
 
@@ -83,7 +83,9 @@ the module.
 Poly plays up to NOTES notes. UNISON stacks 1-8 voices on each note, DETUNE spreads them 60 cents apart at full and
 SPREAD places them across the stereo field. There are eight voices in all, so NOTES x UNISON beyond eight plays
 fewer notes; past NOTES the oldest note lets go. A key played again while it still rings starts its own voice over.
-GLIDE (0-2 s, a time constant) slides between overlapping keys in every mode. BEND is the pitch-bend range (0-24
+GLIDE (0-2 s, a time constant) slides between overlapping keys in every mode. In Poly, a key let go before it has
+played a block (Melodee sends a block's notes together) counts as let go already: it takes no place under NOTES, and
+a key struck on that frame does not glide from it. BEND is the pitch-bend range (0-24
 semitones). VEL is the velocity curve (an exponent, 0.1-4). AT bends the pressure response (-1 soft to +1 quick).
 VEL>TIM (Velocity to Timbre) uses that velocity curve to modulate each note’s timbre. It ranges from −100% to
 +100% and defaults to 0%. Positive values raise timbre more for harder hits, and negative values lower it more.
@@ -171,7 +173,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
-- `tests/host.cpp` (303,519 checks):
+- `tests/host.cpp` (322,773 checks):
   - the description and ports
   - every parameter's text both ways, state, presets
   - A4 at 440 Hz at 22.05 to 96 kHz
@@ -182,7 +184,9 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
   - the modulation depths, the four amp modes and the retrigger rate
   - every model at default and extreme settings, the output within +-1
   - a 6-op FM model taking over from another model: the output stays finite after a sounding Particle voice, and
-    the next note is the same, sample for sample, whatever other model the voice played before
+    the next note is the same, sample for sample, whatever model the voice played before, a 6-op one too; a 6-op
+    note choked, silenced or with its model changed under it and back: the next two notes are the same, sample for
+    sample, as in an instance that never played
   - edges: values queued over a reset, a key replayed while it rings under NOTES, pedal notes let go before held
     keys, notes shorter than a block, a slide off a pedal-held voice, a glide set with its note, unison raised under
     Mono, the filter coming back in
