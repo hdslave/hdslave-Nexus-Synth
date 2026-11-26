@@ -88,7 +88,13 @@ void SixOpEngine::Init(BufferAllocator* allocator) {
 }
 
 void SixOpEngine::Reset() {
-  
+  // Nexus: the tail of the staggered rendering waits in the RAM all engines
+  // share, and the next Render() plays it. After another engine has used that
+  // RAM, or after the voice was silenced, it is not this engine's sound.
+  fill(
+      &acc_buffer_[0],
+      &acc_buffer_[kMaxBlockSize * kNumSixOpVoices],
+      0.0f);
 }
 
 void SixOpEngine::LoadUserData(const uint8_t* user_data) {

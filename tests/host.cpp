@@ -2,8 +2,8 @@
 // tuning at several host rates (the 48 kHz engine resampled), the same output whatever the block size, voices (notes,
 // unison and its detune, the eight-voice limit), Mono, Legato, glide, Melodee's Slide and Tie, MIDI and the channel
 // modes, the modulation depths, the four amp modes, the retrigger rate, every model, bounded output at extreme
-// settings, sleeping when silent, and the screen page. Writes demo renders (WAV) and the page's pictures (PNG) into the
-// output folder.
+// settings, a 6-op model taking over from any other, sleeping when silent, and the screen page. Writes demo renders
+// (WAV) and the page's pictures (PNG) into the output folder.
 //   host Nexus.clap OUT_FOLDER
 #include "wav.h"
 #include "png.h"
@@ -1026,6 +1026,45 @@ void testModels (const std::string& folder)
     writeWav ((folder + "/models.wav").c_str(), allL, allR, 48000);
 }
 
+// A model takes over the RAM its voice's models share as the last one left it. The 6-op models keep the tail of their
+// staggered rendering there and play it in their first block, so they clear it when they take over. After Particle,
+// whose diffuser fills that RAM with 16-bit words (read as floats, its small negative samples are NaN), the output
+// stays finite; and a 6-op note is the same, sample for sample, whatever other model the voice played before.
+void testModelSwitch()
+{
+    using namespace ParamId;
+    const int particle = 18;
+    for (int fm = 2; fm <= 4; ++fm)
+    {
+        // A droning Particle voice, the model switched under it.
+        {
+            Instance a;
+            const auto out = a.render (36000, { P (0, model, particle), P (0, ampMode, Amp::drone), On (0, 60, 1.0), P (24000, model, fm) });
+            if (! finite (out.l) || ! finite (out.r)) std::printf ("  Particle to model %d (%s): the output is not finite\n", fm, modelChoices[fm]);
+            CHECK (finite (out.l) && finite (out.r));
+            CHECK (rms (out.l, 12000, 24000) > 1e-4); // Particle sounded,
+            CHECK (rms (out.l, 30000, 36000) > 1e-4); // and the 6-op model plays on
+        }
+        // The voice choked, the model changed while nothing plays, then a note.
+        Stereo first;
+        for (int prev = 0; prev < modelCount; ++prev)
+        {
+            if (prev >= 2 && prev <= 4) continue; // (the three 6-op models are one engine: it keeps its own state)
+            Instance a;
+            const auto out = a.render (30000, { P (0, model, prev), P (0, ampMode, Amp::drone), On (0, 60, 1.0), { 6000, Cue::choke, 60, 0.0, 0 },
+                                                P (12000, model, fm), On (18000, 60, 1.0) });
+            CHECK (finite (out.l) && finite (out.r));
+            CHECK (rms (out.l, 9000, 18000) == 0.0);
+            CHECK (rms (out.l, 24000, 30000) > 1e-4);
+            if (first.l.empty()) { first = out; continue; }
+            const bool same = std::equal (out.l.begin() + 18000, out.l.end(), first.l.begin() + 18000)
+                              && std::equal (out.r.begin() + 18000, out.r.end(), first.r.begin() + 18000);
+            if (! same) std::printf ("  model %d (%s) after model %d (%s) plays what that one left\n", fm, modelChoices[fm], prev, modelChoices[prev]);
+            CHECK (same);
+        }
+    }
+}
+
 // Silent: the host may let it sleep; sounding: not.
 void testSleep()
 {
@@ -1319,6 +1358,7 @@ int main (int argc, char** argv)
     run ("review", testReview);
     run ("third", testThird);
     run ("models", [&] { testModels (folder); });
+    run ("modelswitch", testModelSwitch);
     run ("sleep", testSleep);
     run ("screen", [&] { testScreen (folder); });
     run ("playertext", testPlayerText);

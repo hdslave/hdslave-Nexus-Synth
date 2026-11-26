@@ -28,7 +28,7 @@ Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melo
 
 The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.4). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.5). Not yet run on the MPC itself.
 
 ## Install
 
@@ -171,7 +171,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
-- `tests/host.cpp` (285,449 checks):
+- `tests/host.cpp` (301,991 checks):
   - the description and ports
   - every parameter's text both ways, state, presets
   - A4 at 440 Hz at 22.05 to 96 kHz
@@ -181,6 +181,8 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
   - MIDI bend, wheel and pressure; the channel modes; chokes and the sustain pedal
   - the modulation depths, the four amp modes and the retrigger rate
   - every model at default and extreme settings, the output within +-1
+  - a 6-op FM model taking over from another model: the output stays finite after a sounding Particle voice, and
+    the next note is the same, sample for sample, whatever other model the voice played before
   - edges: values queued over a reset, a key replayed while it rings under NOTES, pedal notes let go before held
     keys, notes shorter than a block, a slide off a pedal-held voice, a glide set with its note, unison raised under
     Mono, the filter coming back in
