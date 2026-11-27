@@ -29,6 +29,11 @@ constexpr uint32_t internalRate = 48000;
 constexpr float controlRate = (float) internalRate / (float) block; // 4 kHz
 // One voice's level in the mix, against Plaits' full scale (the plug-in Nexus is modelled on, measured).
 constexpr float voiceGain = 0.356f;
+// A place moved back by less than a 64th note (in quarters: hdslaveOS's own jump tolerance) is not a locate. hdslaveOS
+// works the place out from its ticks, so it is not quite a straight line from block to block (a swung tick, a tick on a
+// block's edge, MTC's trim: up to 0.0021 of a quarter), and a plug-in two tracks play is run twice a block (its second
+// call told a block on, the next block's first a block back).
+constexpr double jumpBeats = 1.0 / 16.0;
 
 // The output stage, at the host's rate (after the resampler, which may overshoot): samples up to 0.8 (about -2 dBFS)
 // pass as they are; above, a knee (a rational tanh, slope 1 where it starts and 0 where it ends) bends them smoothly to
@@ -121,6 +126,7 @@ struct Adsr
 struct LfoState
 {
     float phase = 0.0f, held = 0.0f, from = 0.0f, to = 0.0f;
+    double place = -1.0e300; // the song's place it took last, locked to the song (none: free)
     void restart (Rng& rng)
     {
         phase = 0.0f;
@@ -904,12 +910,20 @@ private:
     {
         if (locked)
         {
-            double p = beatsNow() / divisionBeats + 0.0;
+            // A place a little behind the last one it took (under a 64th note: the host's place off its line, or a
+            // plug-in run twice a block) is no locate: it holds where it got to until the song is past it again, so no
+            // cycle starts twice and no Random value is drawn off a cycle's start. Further back, it starts the cycle
+            // the song is in, as before.
+            const double beats = beatsNow();
+            if (beats < s.place && s.place - beats < jumpBeats) return;
+            s.place = beats;
+            double p = beats / divisionBeats + 0.0;
             p -= std::floor (p);
             if ((float) p < s.phase) s.wrap (rng);
             s.phase = (float) p;
             return;
         }
+        s.place = -1.0e300;
         (void) l;
         s.phase += hz / controlRate;
         if (s.phase >= 1.0f)

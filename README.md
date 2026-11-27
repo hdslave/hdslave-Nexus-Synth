@@ -28,7 +28,7 @@ Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melo
 
 The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.8). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.9). Not yet run on the MPC itself.
 
 ## Install
 
@@ -115,6 +115,13 @@ RATE runs 0-40 Hz. SYNC takes the rate from the song's tempo (DIV: 4 bars to 1/3
 song plays and RETRIG is off, locks the phase to the song's position. RETRIG restarts it on each new note (at PHASE; PHASE moves Sine, Triangle, Saw and Square, while Random
 and Smooth have no phase to move). VOICE gives each voice its own LFO instead of one for all; a voice's LFO runs from
 its own note and does not lock to the song.
+Locked to the song, an LFO takes the song's place a little behind the last one it took (by less than a 64th note) as
+no locate: hdslaveOS works the place out from its ticks, so a swung tick, a tick on a block's edge or MTC's trim puts
+it up to 0.0021 of a quarter off from block to block, and a plug-in two tracks play is run twice a block. It holds
+where it got to until the song is past it again, so no cycle starts twice. Up to 0.1.8 any step back started a new
+cycle: Random drew a new value off its boundary, and the draws went out of step with the song (at 127 BPM with the
+place up to 0.002 of a quarter off, 248 of 256 sixteenths held another value than with a straight place). A place
+moved back further starts the cycle it lands in, as before.
 
 **Cycle.** A looping rise and fall (each 1 ms to 5 s), Linear, Exp or Log, unipolar (0 to 1) or bipolar (-1 to 1).
 RETRIG restarts the rise on each new note.
@@ -209,6 +216,9 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
   - a third review: the output within +-1 and untouched below about -2 dBFS, a held note's id still known after 32 more
     notes, chokes and All Sound Off fading within a block instead of stepping
   - sleeping when silent
+  - a Random LFO locked to the song's sixteenths: the same value on each as with a straight place, with the place up
+    to 0.002 of a quarter off (also in parts), swing 60's ticks and run twice a block, at 127 and 40 BPM; a place
+    moved back under a 64th note held, over it a new cycle
   - the page (its pictures in `build/`)
   - no hardware names in what a player reads; the reported delay against rendered onsets; a flood past the event
     queue sounding the same at any block size; states claiming another version refused

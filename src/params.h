@@ -13,7 +13,7 @@
 #include <strings.h>
 
 #ifndef NEXUS_VERSION
-#define NEXUS_VERSION "0.1.8"
+#define NEXUS_VERSION "0.1.9"
 #endif
 
 namespace nexus

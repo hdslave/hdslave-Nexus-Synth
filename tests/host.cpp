@@ -22,6 +22,7 @@
 #include <dlfcn.h>
 #include <functional>
 #include <map>
+#include <random>
 #include <set>
 #include <string>
 #include <vector>
@@ -1485,6 +1486,243 @@ void testUnroutedLfo()
     const auto routed = renderWith (LfoShape::sine, 0.9, 0.0, 0.5);
     CHECK (routed.l != unroutedA.l || routed.r != unroutedA.r);
 }
+// --- The song's place a little off its line ------------------------------------------------------------------------
+// hdslaveOS tells the place only at its own 128-frame blocks, worked out from its ticks, and it is not quite a straight
+// line from block to block: a swung tick moves it by up to 0.2 tick (0.0021 of a quarter at swing 60), a tick on a
+// block's edge and MTC's speed trim by less, and a plug-in two tracks play is run twice a block (its second call told a
+// block on, the next block's first call a block back). None of that is a locate: an LFO locked to the song must not
+// start a cycle again (its Random shape drawing a new value off its boundary), nor lose one.
+
+// One process call: its frames, the place it is told, and where its output goes in the song (from its frame).
+struct Call
+{
+    uint32_t frames;
+    double beats;
+    uint64_t at;
+};
+
+// The calls hdslaveOS makes over `blocks` of its blocks at `bpm` and `rate`: each block told the place `place (frame)`
+// at its start, counted on through it. `cut (block)` in 1..127 plays a block in two calls split there (an instrument
+// is played in parts, split where a note falls); `twice` runs every block twice (a plug-in two tracks share).
+std::vector<Call> hostCalls (uint64_t blocks, double bpm, double rate, const std::function<double (uint64_t)>& place,
+                             const std::function<uint32_t (uint64_t)>& cut = {}, bool twice = false)
+{
+    const double perFrame = bpm / 60.0 / rate;
+    std::vector<Call> calls;
+    for (uint64_t b = 0; b < blocks; ++b)
+    {
+        const uint64_t at = b * 128;
+        for (int run = 0; run < (twice ? 2 : 1); ++run)
+        {
+            const double told = place (at) + run * 128 * perFrame;
+            const uint32_t s = cut ? cut (b) : 0;
+            if (s > 0 && s < 128)
+            {
+                calls.push_back ({ s, told, at });
+                calls.push_back ({ 128 - s, told + s * perFrame, at + s });
+            }
+            else
+                calls.push_back ({ 128, told, at });
+        }
+    }
+    return calls;
+}
+
+// Plays the calls, the song playing throughout; each call's output is added where it goes, or with `inOrder` put one
+// after another (the plug-in's own stream, as it was played).
+std::vector<float> playCalls (Instance& a, const std::vector<Call>& calls, double bpm, bool inOrder = false)
+{
+    uint64_t total = 0;
+    for (const auto& c : calls)
+        total += c.frames;
+    std::vector<float> l (inOrder ? total : calls.empty() ? 0 : calls.back().at + calls.back().frames, 0.0f), cl (128), cr (128);
+    Events none;
+    clap_output_events ignored { nullptr, [] (const clap_output_events*, const clap_event_header*) { return true; } };
+    int64_t steady = 0;
+    for (const auto& c : calls)
+    {
+        clap_event_transport tr {};
+        tr.header = { sizeof (clap_event_transport), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0 };
+        tr.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_IS_PLAYING;
+        tr.tempo = bpm;
+        tr.song_pos_beats = (clap_beattime) std::llround (c.beats * (double) CLAP_BEATTIME_FACTOR);
+        std::fill (cl.begin(), cl.end(), 0.0f);
+        std::fill (cr.begin(), cr.end(), 0.0f);
+        float* outs[2] = { cl.data(), cr.data() };
+        clap_audio_buffer buffer {};
+        buffer.data32 = outs;
+        buffer.channel_count = 2;
+        clap_process p {};
+        p.steady_time = steady;
+        p.frames_count = c.frames;
+        p.transport = &tr;
+        p.audio_outputs = &buffer;
+        p.audio_outputs_count = 1;
+        p.in_events = &none.in;
+        p.out_events = &ignored;
+        CHECK (a.plugin->process (a.plugin, &p) != CLAP_PROCESS_ERROR);
+        for (uint32_t i = 0; i < c.frames; ++i)
+            l[(size_t) ((inOrder ? (uint64_t) steady : c.at) + i)] += cl[i];
+        steady += c.frames;
+    }
+    return l;
+}
+
+// hdslaveOS's place at a frame with the sequencer's swing (`swing` %): its ticks (96 a quarter) are swing/50 of their
+// length in the first sixteenth of each eighth and (100 - swing)/50 in the second, and the place is the next tick's
+// number less the frames still to it in plain ticks (EngineHost: song = (tick_now - until_tick / tick_length) / 96).
+// So it stands 0.2 tick back at each long tick's start (swing 60), 0.2 on at each short one's; never before the top.
+struct SwungPlace
+{
+    double base;   // frames a plain tick
+    double swing;
+    std::vector<double> starts { 0.0 }; // each tick's first frame
+    size_t from = 0;                    // the tick the last frame asked for was in
+    SwungPlace (double bpm, double rate, double swingPercent) : base (rate * 60.0 / bpm / 96.0), swing (swingPercent) {}
+    double length (size_t k) const { return (k % 48) < 24 ? base * swing / 50.0 : base * (100.0 - swing) / 50.0; }
+    // The first frame of tick k.
+    double tickAt (size_t k)
+    {
+        while (starts.size() <= k + 1)
+            starts.push_back (starts.back() + length (starts.size() - 1));
+        return starts[k];
+    }
+    double operator() (uint64_t frame)
+    {
+        size_t k = tickAt (from) <= (double) frame ? from : 0;
+        while (tickAt (k + 1) <= (double) frame)
+            ++k;
+        from = k;
+        return std::max (0.0, ((double) k + 1.0 - (tickAt (k + 1) - (double) frame) / base) / 96.0);
+    }
+};
+
+
+// The pitch a Random LFO on the song's sixteenths gives a sine voice, in the middle of each sixteenth: its bounds
+// (frames, in the song) placed in the output by `at`.
+std::vector<double> stepPitches (const std::vector<float>& l, double rate, const std::vector<double>& bounds,
+                                 const std::function<double (double)>& at)
+{
+    std::vector<double> out;
+    for (size_t k = 0; k + 1 < bounds.size(); ++k)
+    {
+        const double from = at (bounds[k] + 0.35 * (bounds[k + 1] - bounds[k])), to = at (bounds[k] + 0.75 * (bounds[k + 1] - bounds[k]));
+        if (to >= (double) l.size())
+            break;
+        out.push_back (semis (frequency (l, rate, (size_t) from, (size_t) to)));
+    }
+    return out;
+}
+// How many of the steps' pitches are not the reference's (more than 0.3 semitone off), and how many there are.
+int unlike (const std::vector<double>& got, const std::vector<double>& want, size_t from = 0)
+{
+    int n = got.size() == want.size() ? 0 : 1000;
+    for (size_t k = from; k < got.size() && k < want.size(); ++k)
+        n += std::fabs (got[k] - want[k]) > 0.3;
+    return n;
+}
+
+void testPositionJitter()
+{
+    using namespace ParamId;
+    const double rate = 44100.0;
+    const bool debug = std::getenv ("NEXUS_DEBUG") != nullptr;
+    // LFO 2 and the Random source, free, held still (they would draw from the same random numbers as LFO 1 does at
+    // their own times, so a place moved a little would change which draws come first).
+    auto patch = [] { return sine ({ P (0, lfo1Shape, LfoShape::random), P (0, lfo1Sync, 1), P (0, lfo1Div, 8), P (0, lfo1Retrig, 0),
+                                     P (0, route (0, 0), 1.0), P (0, lfo2Rate, 0.0), P (0, rndRate, 0.0), On (0, 69, 1.0) }); };
+    for (double bpm : { 127.0, 40.0 })
+    {
+        const double perFrame = bpm / 60.0 / rate, step = 0.25 / perFrame;
+        const double beats = bpm > 100.0 ? 64.0 : 24.0;
+        const uint64_t blocks = (uint64_t) (beats / perFrame / 128.0);
+        auto song = [&] (const std::vector<Call>& calls, bool inOrder = false) {
+            Instance a (rate);
+            a.render (1, patch(), 1, false, bpm); // the patch and the note, stopped
+            return playCalls (a, calls, bpm, inOrder);
+        };
+        std::vector<double> bounds; // the sixteenths' starts, straight
+        for (int k = 0; k * step < (double) blocks * 128.0 + step; ++k)
+            bounds.push_back (k * step);
+        auto same = [] (double f) { return f; };
+        const auto want = stepPitches (song (hostCalls (blocks, bpm, rate, [&] (uint64_t at) { return (double) at * perFrame; })), rate, bounds, same);
+        CHECK (want.size() > 90);
+        int distinct = 0; // a new value drawn on each sixteenth: the steps differ
+        for (size_t k = 1; k < want.size(); ++k)
+            distinct += std::fabs (want[k] - want[k - 1]) > 0.3;
+        CHECK (distinct >= (int) want.size() * 9 / 10);
+        auto check = [&] (const char* name, const std::vector<double>& got, const std::vector<double>& reference) {
+            const int n = unlike (got, reference);
+            if (debug)
+                std::printf ("debug jitter %.0f BPM %s: %zu sixteenths, %d not as straight\n", bpm, name, got.size(), n);
+            CHECK (n == 0);
+        };
+
+        // Up to 0.002 quarter off the line, either way, block by block; then each block played in two parts.
+        std::mt19937 random (7);
+        std::vector<double> off (blocks + 1);
+        for (auto& o : off)
+            o = std::uniform_real_distribution<double> (-0.002, 0.002) (random);
+        auto jittered = [&] (uint64_t at) { return std::max (0.0, (double) at * perFrame + off[at / 128]); };
+        check ("off 0.002", stepPitches (song (hostCalls (blocks, bpm, rate, jittered)), rate, bounds, same), want);
+        std::vector<uint32_t> cuts (blocks);
+        for (auto& c : cuts)
+            c = 1 + (uint32_t) (random() % 127);
+        check ("off 0.002, in parts", stepPitches (song (hostCalls (blocks, bpm, rate, jittered, [&] (uint64_t b) { return cuts[b]; })), rate, bounds, same), want);
+
+        // The sequencer's swing at 60 %: the sixteenths start where the swung ticks put them.
+        SwungPlace swung (bpm, rate, 60.0);
+        std::vector<double> swungBounds;
+        for (size_t k = 0; k < bounds.size(); ++k)
+            swungBounds.push_back (swung.tickAt (k * 24));
+        check ("swing 60", stepPitches (song (hostCalls (blocks, bpm, rate, [&] (uint64_t at) { return swung (at); })), rate, swungBounds, same), want);
+
+        // Run twice a block (two tracks play it), heard as the plug-in plays it (its calls one after another): song frame
+        // F's place is told first in the second run of the block before F's.
+        auto own = [] (double f) {
+            const double blocksIn = std::floor (f / 128.0);
+            return blocksIn < 1.0 ? f : f + (blocksIn - 1.0) * 128.0;
+        };
+        check ("run twice", stepPitches (song (hostCalls (blocks, bpm, rate, [&] (uint64_t at) { return (double) at * perFrame; }, {}, true), true),
+                                         rate, bounds, own), want);
+    }
+    // A real locate still counts: the place moved back across a sixteenth's start by more than a 64th note starts that
+    // sixteenth again (a new value); by less, the LFO holds and the values go on as they were, that much later. 127 BPM,
+    // the place moved back 0.03 quarter after beat 1 (the fifth sixteenth's start).
+    {
+        const double bpm = 127.0, perFrame = bpm / 60.0 / rate, step = 0.25 / perFrame;
+        const uint64_t blocks = (uint64_t) (4.0 / perFrame / 128.0), at = (uint64_t) (1.03 / perFrame / 128.0) * 128;
+        auto song = [&] (double by) {
+            Instance a (rate);
+            a.render (1, patch(), 1, false, bpm);
+            return playCalls (a, hostCalls (blocks, bpm, rate, [&] (uint64_t f) { return (double) f * perFrame - (f >= at ? by : 0.0); }), bpm);
+        };
+        std::vector<double> bounds;
+        for (int k = 0; k <= 16; ++k)
+            bounds.push_back (k * step);
+        auto same = [] (double f) { return f; };
+        const auto want = stepPitches (song (0.0), rate, bounds, same);
+        for (double by : { 0.05, 0.08 })
+        {
+            std::vector<double> later; // the sixteenths after beat 1 come `by` later
+            for (size_t k = 0; k < bounds.size(); ++k)
+                later.push_back (k <= 4 ? bounds[k] : bounds[k] + by / perFrame);
+            auto got = stepPitches (song (by), rate, later, same);
+            // A locate: from the fifth sixteenth on, each value is the one straight's next sixteenth had (one more drawn).
+            std::vector<double> expect (want.begin(), want.begin() + 4);
+            for (size_t k = 4; k < want.size(); ++k)
+                expect.push_back (by < 1.0 / 16.0 ? want[k] : k + 1 < want.size() ? want[k + 1] : 0.0);
+            const size_t both = std::min (got.size(), expect.size() - (by < 1.0 / 16.0 ? 0 : 1)); // the song's end cuts the last
+            got.resize (both), expect.resize (both);
+            CHECK (both >= 12);
+            const int n = unlike (got, expect);
+            if (debug)
+                std::printf ("debug jitter locate back %.2f: %zu sixteenths, %d not as expected\n", by, got.size(), n);
+            CHECK (n == 0);
+        }
+    }
+}
+
 } // namespace
 
 int main (int argc, char** argv)
@@ -1527,6 +1765,7 @@ int main (int argc, char** argv)
     run ("latencytail", testLatencyTail);
     run ("queueflood", testQueueFlood);
     run ("unroutedlfo", testUnroutedLfo);
+    run ("jitter", testPositionJitter);
     entry->deinit();
     std::printf ("%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
