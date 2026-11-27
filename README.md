@@ -115,8 +115,8 @@ RATE runs 0-40 Hz. SYNC takes the rate from the song's tempo (DIV: 4 bars to 1/3
 song plays and RETRIG is off, locks the phase to the song's position. RETRIG restarts it on each new note (at PHASE; PHASE moves Sine, Triangle, Saw and Square, while Random
 and Smooth have no phase to move). VOICE gives each voice its own LFO instead of one for all; a voice's LFO runs from
 its own note and does not lock to the song.
-Locked to the song, an LFO takes the song's place a little behind the last one it took (by less than a 64th note) as
-no locate: hdslaveOS works the place out from its ticks, so a swung tick, a tick on a block's edge or MTC's trim puts
+Locked to the song, an LFO takes the song's place a little behind the last one it took (by up to a 64th note from where
+the last call's frames led, as hdslaveOS judges a jump) as no locate: hdslaveOS works the place out from its ticks, so a swung tick, a tick on a block's edge or MTC's trim puts
 it up to 0.0021 of a quarter off from block to block, and a plug-in two tracks play is run twice a block. It holds
 where it got to until the song is past it again, so no cycle starts twice. Up to 0.1.8 any step back started a new
 cycle: Random drew a new value off its boundary, and the draws went out of step with the song (at 127 BPM with the

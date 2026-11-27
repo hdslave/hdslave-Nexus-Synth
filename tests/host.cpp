@@ -1723,6 +1723,59 @@ void testPositionJitter()
     }
 }
 
+// The edge of a jump, as hdslaveOS has it: a move of more than a 64th note is a jump, exactly a 64th is not. The place
+// told a 64th behind where the last block's frames led (held), or a hair more (a jump: the sixteenth at beat 1 starts
+// again, one more value drawn), after a block told -0.0019 to +0.0017 off its line, eight ways: each the same. Before,
+// the LFO set the place against its own last control tick (up to a tick behind the host's count), so a move a little
+// over a 64th could be held after one block and not after another.
+void testJumpEdge()
+{
+    using namespace ParamId;
+    const double rate = 44100.0, bpm = 127.0, perFrame = bpm / 60.0 / rate, step = 0.25 / perFrame;
+    const bool debug = std::getenv ("NEXUS_DEBUG") != nullptr;
+    auto patch = [] { return sine ({ P (0, lfo1Shape, LfoShape::random), P (0, lfo1Sync, 1), P (0, lfo1Div, 8), P (0, lfo1Retrig, 0),
+                                     P (0, route (0, 0), 1.0), P (0, lfo2Rate, 0.0), P (0, rndRate, 0.0), On (0, 69, 1.0) }); };
+    const uint64_t blocks = (uint64_t) (4.0 / perFrame / 128.0), at = (uint64_t) (1.02 / perFrame / 128.0) * 128;
+    auto song = [&] (const std::function<double (uint64_t)>& place) {
+        Instance a (rate);
+        a.render (1, patch(), 1, false, bpm);
+        return playCalls (a, hostCalls (blocks, bpm, rate, place), bpm);
+    };
+    std::vector<double> bounds;
+    for (int k = 0; k <= 16; ++k)
+        bounds.push_back (k * step);
+    auto same = [] (double f) { return f; };
+    const auto want = stepPitches (song ([&] (uint64_t f) { return (double) f * perFrame; }), rate, bounds, same);
+    int wrong = 0;
+    for (double by : { 1.0 / 16.0, 1.0 / 16.0 + 0.0004 })
+        for (double off : { 0.001, -0.001, 0.0013, -0.0007, 0.0002, -0.0019, 0.0, 0.0017 })
+        {
+            const double before = (double) (at - 128) * perFrame + off; // the block before, told `off` off its line
+            const auto l = song ([&] (uint64_t f) {
+                if (f < at - 128)
+                    return (double) f * perFrame;
+                if (f < at)
+                    return before;
+                return before + (double) (f - at + 128) * perFrame - by;
+            });
+            std::vector<double> later; // the sixteenths after beat 1 come `by` later, less `off`
+            for (size_t k = 0; k < bounds.size(); ++k)
+                later.push_back (k <= 4 ? bounds[k] : bounds[k] + (by - off) / perFrame);
+            auto got = stepPitches (l, rate, later, same);
+            const bool jump = by > 1.0 / 16.0;
+            std::vector<double> expect (want.begin(), want.begin() + 4);
+            for (size_t k = 4; k + 1 < want.size(); ++k)
+                expect.push_back (jump ? want[k + 1] : want[k]);
+            const size_t both = std::min (got.size(), expect.size());
+            got.resize (both), expect.resize (both);
+            const int n = both >= 12 ? unlike (got, expect) : 1000;
+            if (debug)
+                std::printf ("debug jump edge %.4f after %+.4f: %zu sixteenths, %d not as expected\n", by, off, both, n);
+            wrong += n != 0;
+        }
+    CHECK (wrong == 0);
+}
+
 } // namespace
 
 int main (int argc, char** argv)
@@ -1766,6 +1819,7 @@ int main (int argc, char** argv)
     run ("queueflood", testQueueFlood);
     run ("unroutedlfo", testUnroutedLfo);
     run ("jitter", testPositionJitter);
+    run ("jumpedge", testJumpEdge);
     entry->deinit();
     std::printf ("%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

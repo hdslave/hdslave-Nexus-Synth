@@ -34,6 +34,8 @@ constexpr float voiceGain = 0.356f;
 // block's edge, MTC's trim: up to 0.0021 of a quarter), and a plug-in two tracks play is run twice a block (its second
 // call told a block on, the next block's first a block back).
 constexpr double jumpBeats = 1.0 / 16.0;
+// CLAP rounds the place to 2^-31 beats: a move told as exactly a 64th note can read a hair over it.
+constexpr double jumpSlack = 1.0e-9;
 
 // The output stage, at the host's rate (after the resampler, which may overshoot): samples up to 0.8 (about -2 dBFS)
 // pass as they are; above, a knee (a rational tanh, slope 1 where it starts and 0 where it ends) bends them smoothly to
@@ -335,6 +337,7 @@ public:
         std::memset (ringR, 0, sizeof (ringR));
         resampler.reset();
         hostFrame = 0;
+        toldPlaying = false, toldBeats = 0.0, toldFrame = 0;
         rendered = 0;
         silentFrom = 0;
         head = tail = 0;
@@ -375,7 +378,13 @@ public:
     // The host's transport at the block's start (beats from the song's top).
     void transport (bool isPlaying, double beats, double bpm)
     {
-        push (Ev { 0, Ev::clock, (uint8_t) (isPlaying ? 1 : 0), 0, (float) bpm, beats });
+        // A locate (Play, or the place moved more than a 64th note from where the last call's frames led, as hdslaveOS
+        // judges a jump): told to the LFOs, which hold through a smaller step back (key 2: playing, located).
+        const uint64_t frame = hostFrame + stampFrame;
+        const double expected = toldBeats + (double) (frame - toldFrame) * toldTempo / 60.0 / (double) hostHz;
+        const bool located = isPlaying && (! toldPlaying || std::fabs (beats - expected) > jumpBeats + jumpSlack);
+        toldPlaying = isPlaying, toldBeats = beats, toldFrame = frame, toldTempo = bpm;
+        push (Ev { 0, Ev::clock, (uint8_t) (isPlaying ? (located ? 2 : 1) : 0), 0, (float) bpm, beats });
     }
 
     // Renders the host block (its events were stamped before).
@@ -892,6 +901,9 @@ private:
                 break;
             case Ev::chanAt: channelPressure = e.v; break;
             case Ev::clock:
+                if (e.key == 2) // located: the LFOs locked to the song take its place as it is
+                    for (auto& s : lfoGlobal)
+                        s.place = -1.0e300;
                 playing = e.key != 0;
                 tempo = std::clamp ((double) e.v, 1.0, 1000.0);
                 beatsAt = e.d;
@@ -910,12 +922,12 @@ private:
     {
         if (locked)
         {
-            // A place a little behind the last one it took (under a 64th note: the host's place off its line, or a
-            // plug-in run twice a block) is no locate: it holds where it got to until the song is past it again, so no
-            // cycle starts twice and no Random value is drawn off a cycle's start. Further back, it starts the cycle
-            // the song is in, as before.
+            // A place behind the last one it took, with no locate since (the host's place off its line by up to a 64th
+            // note, or a plug-in run twice a block) holds it where it got to until the song is past it again, so no
+            // cycle starts twice and no Random value is drawn off a cycle's start. After a locate (transport()), it
+            // starts the cycle the song is in, as before.
             const double beats = beatsNow();
-            if (beats < s.place && s.place - beats < jumpBeats) return;
+            if (beats < s.place) return;
             s.place = beats;
             double p = beats / divisionBeats + 0.0;
             p -= std::floor (p);
@@ -1323,6 +1335,10 @@ private:
     uint32_t hostHz = internalRate;
     uint64_t delay = block;
     uint64_t hostFrame = 0, rendered = 0, blockStart = 0;
+    // The last transport told (host side): playing, the place, its frame and the tempo, to tell a locate from drift.
+    bool toldPlaying = false;
+    double toldBeats = 0.0, toldTempo = 120.0;
+    uint64_t toldFrame = 0;
     uint32_t stampFrame = 0;
     int quietBlocks = 1 << 20;
     static constexpr uint64_t ringSize = 2048, ringMask = ringSize - 1;
