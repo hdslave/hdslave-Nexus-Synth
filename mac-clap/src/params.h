@@ -13,7 +13,7 @@
 #include <strings.h>
 
 #ifndef NEXUS_VERSION
-#define NEXUS_VERSION "0.1.7"
+#define NEXUS_VERSION "0.1.8"
 #endif
 
 namespace nexus
@@ -71,6 +71,7 @@ inline const char* const modelChoices[] = { "VA VCF", "Phase Dist", "6-Op FM I",
                                             "Harmonic", "Wavetable", "Chords", "Speech", "Swarm", "Noise", "Particle",
                                             "Inharm String", "Modal Reso", "Bass Drum", "Snare Drum", "Hi-Hat" };
 constexpr int modelCount = 24;
+constexpr int chiptuneModel = 7; // its place in modelChoices
 // What HARMONICS, TIMBRE and MORPH do in each model (the module's manual), for the page.
 struct ModelRole { const char* harmonics; const char* timbre; const char* morph; const char* aux; };
 inline constexpr ModelRole modelRoles[modelCount] = {

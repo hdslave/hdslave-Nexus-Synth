@@ -161,6 +161,10 @@ std::vector<Scenario> scenarios()
     add ("rate-44100", phrase (44100.0), 44100.0);
     add ("rate-96000", phrase (96000.0), 96000.0);
     add ("rate-22050", phrase (22050.0), 22050.0);
+    // Chiptune with a trigger, its keys held: recorded from 0.1.7, before Nexus closed its notes once let go.
+    add ("chiptune-held-gate", { P (0, model, 7), P (0, trigRate, 5), On (0, 60), On (0, 64) });
+    add ("chiptune-held-env", { P (0, model, 7), P (0, ampMode, Amp::env), P (0, trigRate, 3), P (0, timbreAtt, 0.3), On (0, 57) });
+    add ("chiptune-held-aux", { P (0, model, 7), P (0, auxMix, 0.5), P (0, harmonics, 0.7), P (0, timbreAtt, -0.4), On (0, 48), On (q, 55) });
     for (uint32_t block : { 128u, 1u, 37u, 4096u })
     {
         Scenario s;

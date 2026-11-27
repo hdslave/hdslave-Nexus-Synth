@@ -60,12 +60,26 @@ void NexusVoice::Silence()
     decay_envelope_.Init();
     lpg_envelope_.Init();
     trigger_state_ = false;
+    rising_edge_ = false;
     lpg_bypassed_ = true;
     previous_note_ = 0.0f;
     fresh_ = true;
     std::fill (trigger_delay_line_, trigger_delay_line_ + 8, 0.0f);
     trigger_write_ = 0;
     previous_engine_index_ = -1; // the engine is reset (and its gate state cleared) at the next render
+}
+
+float NexusVoice::GateFall (float state, float level, float decay, float colour)
+{
+    const float short_decay = (200.0f * kBlockSize) / kSampleRate * SemitonesToRatio (-96.0f * decay);
+    const float decay_tail = (20.0f * kBlockSize) / kSampleRate * SemitonesToRatio (-72.0f * decay + 12.0f * colour) - short_decay;
+    float compressed_level = 1.3f * level / (0.3f + std::fabs (level));
+    CONSTRAIN (compressed_level, 0.0f, 1.0f);
+    const float error = compressed_level - state;
+    const float state_2 = state * state;
+    const float state_4 = state_2 * state_2;
+    const float coefficient = error > 0.0f ? 0.6f : short_decay + (1.0f - state_4) * decay_tail;
+    return state + coefficient * error;
 }
 
 void NexusVoice::Render (const NexusPatch& patch, const NexusModulations& modulations, float* out, float* aux, size_t size)
@@ -104,6 +118,7 @@ void NexusVoice::Render (const NexusPatch& patch, const NexusModulations& modula
 
     EngineParameters p;
     const bool rising_edge = trigger_state_ && ! previous_trigger_state;
+    rising_edge_ = rising_edge;
     if (fresh_)
         previous_note_ = modulations.note, fresh_ = false;
     const float note = (modulations.note + previous_note_) * 0.5f;

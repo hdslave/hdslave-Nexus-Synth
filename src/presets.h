@@ -17,15 +17,17 @@ inline constexpr PresetValue p_saw_lead[] = { { 2, 0.55f }, { 4, 0.85f }, { 9, 2
 inline constexpr PresetValue p_square_bass[] = { { 1, -12.0f }, { 2, 0.0f }, { 3, 0.25f }, { 4, 0.0f }, { 9, 2.0f }, { 13, 0.0f }, { 27, 0.0584804f }, { 28, 0.353035f }, { 29, 0.4f }, { 30, 0.228943f } };
 inline constexpr PresetValue p_pd_keys[] = { { 0, 1.0f }, { 2, 0.3f }, { 3, 0.45f }, { 4, 0.3f }, { 5, 0.5f }, { 10, 0.7f }, { 11, 0.5f } };
 inline constexpr PresetValue p_fm_piano[] = { { 0, 2.0f }, { 2, 0.0f }, { 4, 0.4f }, { 11, 0.75f } };
-inline constexpr PresetValue p_fm_bells[] = { { 0, 3.0f }, { 2, 0.2f }, { 4, 0.35f }, { 11, 0.85f } };
+inline constexpr PresetValue p_fm_bells[] = { { 0, 3.0f }, { 2, 0.69f } }; // bank II's tubular bells, MORPH as set
 inline constexpr PresetValue p_terrain_lead[] = { { 0, 5.0f }, { 2, 0.4f }, { 3, 0.6f }, { 9, 2.0f }, { 13, 2.0f }, { 18, 0.292402f }, { 27, 0.125992f }, { 28, 0.391487f }, { 29, 0.75f }, { 30, 0.368403f }, { 38, 0.246621f }, { 66, 0.25f } };
-inline constexpr PresetValue p_string_ensemble[] = { { 0, 6.0f }, { 3, 0.55f }, { 4, 0.6f }, { 9, 2.0f }, { 14, 6.0f }, { 27, 0.44814f }, { 28, 0.493242f }, { 29, 0.85f }, { 30, 0.654213f } };
+// HARMONICS picks the chord each key plays: 0.04 is the octave (0.5, a minor ninth on every key, clashed in chords).
+inline constexpr PresetValue p_string_ensemble[] = { { 0, 6.0f }, { 2, 0.04f }, { 3, 0.55f }, { 4, 0.6f }, { 9, 2.0f }, { 14, 6.0f }, { 27, 0.44814f }, { 28, 0.493242f }, { 29, 0.85f }, { 30, 0.430887f } };
 inline constexpr PresetValue p_chip_arp[] = { { 0, 7.0f }, { 3, 0.4f }, { 4, 0.3f }, { 12, 5.0f } };
 inline constexpr PresetValue p_fold_bass[] = { { 0, 9.0f }, { 1, -12.0f }, { 2, 0.3f }, { 3, 0.25f }, { 4, 0.35f }, { 5, 0.6f }, { 11, 0.4f }, { 13, 0.0f } };
 inline constexpr PresetValue p_fm_pluck[] = { { 0, 10.0f }, { 2, 0.45f }, { 3, 0.55f }, { 4, 0.3f }, { 5, 0.5f }, { 9, 1.0f }, { 11, 0.45f } };
 inline constexpr PresetValue p_formant_voice[] = { { 0, 11.0f }, { 2, 0.4f }, { 4, 0.4f }, { 9, 2.0f }, { 27, 0.228943f }, { 28, 0.430887f }, { 29, 0.8f }, { 30, 0.430887f }, { 38, 0.215443f }, { 66, 0.2f } };
-inline constexpr PresetValue p_drawbar_organ[] = { { 0, 12.0f }, { 2, 0.3f }, { 3, 0.4f }, { 4, 0.3f }, { 9, 2.0f }, { 27, 0.0843433f }, { 28, 0.271442f }, { 29, 1.0f }, { 30, 0.228943f } };
-inline constexpr PresetValue p_wavetable_pad[] = { { 0, 13.0f }, { 2, 0.25f }, { 3, 0.4f }, { 9, 2.0f }, { 14, 6.0f }, { 27, 0.519249f }, { 28, 0.542884f }, { 29, 0.8f }, { 30, 0.711379f }, { 37, 1.0f }, { 38, 0.170998f }, { 68, 0.3f } };
+// The Harmonic model's AUX is its drawbar organ (harmonics 1, 2, 3, 4, 6, 8, 10, 12); an octave down, the key is the 8'.
+inline constexpr PresetValue p_drawbar_organ[] = { { 0, 12.0f }, { 1, -12.0f }, { 2, 0.3f }, { 3, 0.4f }, { 4, 0.3f }, { 8, 1.0f }, { 9, 3.0f }, { 20, 0.1f }, { 27, 0.0843433f }, { 28, 0.271442f }, { 29, 1.0f }, { 30, 0.228943f } };
+inline constexpr PresetValue p_wavetable_pad[] = { { 0, 13.0f }, { 2, 0.25f }, { 3, 0.4f }, { 9, 2.0f }, { 14, 6.0f }, { 27, 0.519249f }, { 28, 0.542884f }, { 29, 0.8f }, { 30, 0.464159f }, { 37, 1.0f }, { 38, 0.170998f }, { 68, 0.3f } };
 inline constexpr PresetValue p_chord_stab[] = { { 0, 14.0f }, { 2, 0.35f }, { 4, 0.4f }, { 9, 1.0f }, { 11, 0.4f }, { 13, 0.0f } };
 inline constexpr PresetValue p_speech[] = { { 0, 15.0f }, { 2, 0.6f }, { 9, 2.0f }, { 28, 0.493242f }, { 29, 0.9f }, { 30, 0.341995f } };
 inline constexpr PresetValue p_swarm_pad[] = { { 0, 16.0f }, { 2, 0.4f }, { 3, 0.4f }, { 9, 2.0f }, { 27, 0.564622f }, { 28, 0.542884f }, { 29, 0.85f }, { 30, 0.736806f } };
@@ -44,14 +46,14 @@ inline constexpr Preset presetTable[] = {
     { "square-bass", "Square Bass", p_square_bass, 10 },
     { "pd-keys", "PD Keys", p_pd_keys, 7 },
     { "fm-piano", "FM Piano", p_fm_piano, 4 },
-    { "fm-bells", "FM Bells", p_fm_bells, 4 },
+    { "fm-bells", "FM Bells", p_fm_bells, 2 },
     { "terrain-lead", "Terrain Lead", p_terrain_lead, 12 },
-    { "string-ensemble", "String Ensemble", p_string_ensemble, 9 },
+    { "string-ensemble", "String Ensemble", p_string_ensemble, 10 },
     { "chip-arp", "Chip Arp", p_chip_arp, 4 },
     { "fold-bass", "Fold Bass", p_fold_bass, 8 },
     { "fm-pluck", "FM Pluck", p_fm_pluck, 7 },
     { "formant-voice", "Formant Voice", p_formant_voice, 10 },
-    { "drawbar-organ", "Drawbar Organ", p_drawbar_organ, 9 },
+    { "drawbar-organ", "Drawbar Organ", p_drawbar_organ, 12 },
     { "wavetable-pad", "Wavetable Pad", p_wavetable_pad, 12 },
     { "chord-stab", "Chord Stab", p_chord_stab, 6 },
     { "speech", "Speech", p_speech, 6 },

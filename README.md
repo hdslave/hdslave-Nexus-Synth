@@ -28,7 +28,7 @@ Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melo
 
 The synthesis is Plaits' own open-source code (Émilie Gillet, MIT licence): all 24 engines, the internal decay envelope, the low-pass gate, and the output stage run natively at 48 kHz (as on the hardware module) and resample cleanly to the host rate so sound and tuning stay identical at 44.1, 48, or 96 kHz. A transparent soft limiter keeps eight resonant voices cleanly bounded.
 
-Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.7). Not yet run on the MPC itself.
+Hosts list it as **hdslave Nexus** (id `com.hdslave.nexus`, version 0.1.8). Not yet run on the MPC itself.
 
 ## Install
 
@@ -77,7 +77,10 @@ up to a semitone. On Speech they are the module's prosody and speed; on Chiptune
 | Drone | No gate: Env 1 is a plain VCA. Velocity scales the level. The percussive models play as the module does with nothing in TRIG. |
 
 Models that make their own envelope (6-op FM, the string and modal resonators, the drums) bypass the gate, as on
-the module.
+the module. So does Chiptune in Gate, Ping and Env: T ATT shapes its own envelope, and at 0 a note sounds at full
+level, stepping its arpeggio on each strike. The module has nothing that ends such a note. In Nexus each strike opens
+it and the gate's fall closes it, at LPG DECAY and COLOR: in Ping from the strike, whether the key is held or not; in
+Gate and Env once the key is let go (in Env, following Env 1's release).
 
 **Voices.** Mono plays one note and strikes again on each key. Legato glides from a held key with no new strike.
 Poly plays up to NOTES notes. UNISON stacks 1-8 voices on each note, DETUNE spreads them 60 cents apart at full and
@@ -131,7 +134,13 @@ targets move across their whole range; on volume, full depth goes from silence t
 
 Init, Filter Bass, Saw Lead, Square Bass, PD Keys, FM Piano, FM Bells, Terrain Lead, String Ensemble, Chip Arp, Fold
 Bass, FM Pluck, Formant Voice, Drawbar Organ, Wavetable Pad, Chord Stab, Speech, Swarm Pad, Noise Sweep, Particle
-Drops, Plucked String, Modal Bell, Kick, Snare, Hi-Hat: the factory patches of the MPC Plaits plug-in, value for value.
+Drops, Plucked String, Modal Bell, Kick, Snare, Hi-Hat: the factory patches of the MPC Plaits plug-in, value for value,
+but for four changed in 0.1.8. FM Bells plays the second 6-op bank's tubular bells (HARMONICS 0.69, MORPH 0.5; its
+old values picked a patch that plays an octave below the key). Drawbar Organ plays the Harmonic model's organ output
+(AUX), in Drone, an octave down so that the key is the 8' drawbar, with velocity all but flat. String Ensemble plays
+octaves on each key (HARMONICS 0.04; at 0.5 each key played a minor ninth chord, which clashed when chords were
+played). String Ensemble and Wavetable Pad let go sooner: Env 1's release is 400 and 500 ms (it was 1.4 and 1.8 s,
+which rang for 11 and 14 s).
 `./build.sh` writes a demo of each to `build/preset-*.wav`.
 
 ## How it compares with the plug-in it follows
@@ -151,7 +160,7 @@ measured: pitch traces, level envelopes and filter spectra (`tests/render.cpp` r
 - the LFO shapes
 - the cycle's shapes
 - the filter's cutoff, modes and resonance
-- the presets' level (within about a decibel)
+- the presets' level (within about a decibel; the four changed in 0.1.8 are Nexus's own)
 
 **Where they differ:**
 - That plug-in runs Plaits at the host's rate as if it were 44.1 kHz, so at 48 kHz every note plays 147 cents
@@ -173,7 +182,7 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
     ./build.sh fingerprint-update   # only after a change meant to change the sound
     ./build.sh render        # build/render: plays a note script (see tests/render.cpp)
 
-- `tests/host.cpp` (322,773 checks):
+- `tests/host.cpp` (354,064 checks):
   - the description and ports
   - every parameter's text both ways, state, presets
   - A4 at 440 Hz at 22.05 to 96 kHz
@@ -182,6 +191,10 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
   - Mono, Legato, glide, Slide and Tie
   - MIDI bend, wheel and pressure; the channel modes; chokes and the sustain pedal
   - the modulation depths, the four amp modes and the retrigger rate
+  - Chiptune played with a trigger: a key let go goes quiet and frees its voice in Gate, Ping and Env, with TRIG and
+    without, Chip Arp and the pedal too; a Ping tap rings as a held key does; a voice used again stays closed until
+    its strike; a key pressed again, or MODEL or AMP moved away and back, while a note closes does not open it; the
+    same at any block size
   - every model at default and extreme settings, the output within +-1
   - a 6-op FM model taking over from another model: the output stays finite after a sounding Particle voice, and
     the next note is the same, sample for sample, whatever model the voice played before, a 6-op one too; a 6-op
@@ -199,8 +212,9 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
   - the page (its pictures in `build/`)
   - no hardware names in what a player reads; the reported delay against rendered onsets; a flood past the event
     queue sounding the same at any block size; states claiming another version refused
-- `tests/fingerprint.cpp`: a hash of every output sample over 64 scenarios: each preset and each model, the voice
-  modes, Slide and Tie, the modulators, the filters, three other rates and four block sizes.
+- `tests/fingerprint.cpp`: a hash of every output sample over 67 scenarios: each preset and each model, the voice
+  modes, Slide and Tie, the modulators, the filters, held Chiptune notes (recorded from 0.1.7), three other rates
+  and four block sizes.
 - In Melodee's own host: `clap_check` (loads and plays it as Melodee does) and `melodee --melodee-plugin-screen`
   (its page in Melodee's screen, the K1-K3 bindings).
 
@@ -209,9 +223,9 @@ Built and tested in Melodee's build image (Debian bookworm, g++ 12) in the Colim
 
 | Case | Instructions a block |
 |---|---|
-| Worst: eight 6-op FM voices, every route on, a resonant filter | 588,000 (about 12 % of one core) |
-| Pad: the Wavetable Pad, four notes | 239,100 |
-| Typical: the Saw Lead playing a line | 116,200 |
+| Worst: eight 6-op FM voices, every route on, a resonant filter | 589,000 (about 12 % of one core) |
+| Pad: the Wavetable Pad, four notes | 239,600 |
+| Typical: the Saw Lead playing a line | 116,400 |
 | Silent | 10,500 |
 
 Eight voices of one model (eight keys held, `bench model:N`) cost from about 225,000 instructions a block (Chiptune,

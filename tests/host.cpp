@@ -718,6 +718,108 @@ void testRetrigger()
     CHECK (strikes == 6);
 }
 
+// Chiptune played with a trigger (every AMP mode but Drone) makes its own envelope and bypasses the gate, as on the
+// module, and with T ATT at 0 that envelope never falls: nothing ended the note. A key let go must go quiet and free
+// its voice in Gate, Ping and Env, with TRIG and without, the Chip Arp preset too, under the pedal and in Mono. Ping
+// rings out from the strike whether the key is held or not; a voice used again stays closed until its new strike.
+// (That held notes play as before is held by the fingerprint's chiptune-held-* scenarios, recorded from 0.1.7.)
+void testChiptune()
+{
+    using namespace ParamId;
+    struct Case { const char* preset; int amp; float tatt; int trig; };
+    const Case cases[] = { { "chip-arp", -1, 0.0f, -1 }, { nullptr, Amp::gate, 0.0f, 0 }, { nullptr, Amp::gate, 0.0f, 5 },
+                           { nullptr, Amp::ping, 0.0f, 0 }, { nullptr, Amp::env, 0.0f, 3 }, { nullptr, Amp::gate, 0.3f, 5 } };
+    const uint64_t off = 48000;
+    auto quietAfter = [] (Instance& a, const std::vector<float>& out, uint64_t from, double held) {
+        // 3.5 to 4 s after the key: below -60 dB (Env 1's 300 ms release through the gate takes the longest).
+        CHECK (rms (out, from + 168000, from + 192000) < 0.001 * held);
+        a.render (3 * 48000, {}, 128, true, 120.0);
+        CHECK (a.statuses.back() == CLAP_PROCESS_SLEEP);
+    };
+    for (const auto& k : cases)
+    {
+        Instance a;
+        std::vector<Cue> c;
+        if (k.preset != nullptr) CHECK (a.preset (k.preset));
+        else c = { P (0, model, 7), P (0, ampMode, k.amp), P (0, timbreAtt, k.tatt), P (0, trigRate, k.trig) };
+        c.push_back (On (0, 60, 1.0));
+        c.push_back (Off (off, 60));
+        const auto out = a.render (6 * 48000, c, 128, true, 120.0).l;
+        const double held = rms (out, 2400, 12000);
+        CHECK (held > 0.01);
+        quietAfter (a, out, off, held);
+    }
+    // The pedal holds a let-go key; lifted, it closes.
+    {
+        Instance a;
+        const auto out = a.render (6 * 48000, { P (0, model, 7), On (0, 60, 1.0), Midi (1000, 0xb0, 64, 127), Off (24000, 60),
+                                                Midi (off, 0xb0, 64, 0) }, 128, true).l;
+        const double held = rms (out, 2400, 12000);
+        CHECK (rms (out, 36000, off) > 0.5 * held);
+        quietAfter (a, out, off, held);
+    }
+    // Ping: a tap and a held key ring the same.
+    {
+        Instance a, b;
+        const std::vector<Cue> c = { P (0, model, 7), P (0, ampMode, Amp::ping), P (0, timbreAtt, 0.3f), P (0, lpgDecay, 0.6f) };
+        auto tap = c, hold = c;
+        tap.push_back (On (0, 60, 1.0)), tap.push_back (Off (2400, 60));
+        hold.push_back (On (0, 60, 1.0)), hold.push_back (Off (140000, 60));
+        const auto t = a.render (48000, tap, 128, true).l, h = b.render (48000, hold, 128, true).l;
+        bool same = true;
+        for (size_t i = 0; i < 24000; ++i) same &= t[i] == h[i];
+        CHECK (same);
+        CHECK (rms (t, 2400, 4800) > 0.01);
+    }
+    // A voice used again (Mono: the same voice) after its note closed: silent until the new note's strike, as in a
+    // fresh instance, not playing the last note's arpeggio step at once.
+    auto onset = [] (const std::vector<float>& x, size_t from) {
+        for (size_t i = from; i < x.size(); ++i)
+            if (std::fabs (x[i]) > 1e-4f) return (long) (i - from);
+        return -1L;
+    };
+    {
+        Instance a, fresh;
+        const uint64_t again = 5 * 48000;
+        const auto used = a.render (again + 4800, { P (0, voiceMode, VoiceMode::mono), P (0, model, 7), On (0, 60, 1.0), Off (24000, 60),
+                                                    On (again, 67, 1.0) }, 128, true).l;
+        const auto first = fresh.render (4800, { P (0, voiceMode, VoiceMode::mono), P (0, model, 7), On (0, 67, 1.0) }, 128, true).l;
+        CHECK (onset (first, 0) > 0);
+        CHECK (onset (used, again) >= onset (first, 0));
+    }
+    // A key pressed again while its note closes: no jump back to full before the new strike.
+    {
+        Instance a;
+        const uint64_t again = 24000 + 4800;
+        const auto out = a.render (again + 4800, { P (0, voiceMode, VoiceMode::mono), P (0, model, 7), On (0, 60, 1.0), Off (24000, 60),
+                                                   On (again, 60, 1.0) }, 128, true).l;
+        double before = 0.0, after = 0.0;
+        for (size_t i = again - 48; i < again; ++i) before = std::max (before, (double) std::fabs (out[i]));
+        for (size_t i = again; i < again + 48; ++i) after = std::max (after, (double) std::fabs (out[i]));
+        CHECK (before > 0.0);
+        CHECK (after <= 1.25 * before);
+    }
+    // MODEL or AMP moved off Chiptune and back while a note closes: it goes on closing, it does not open again.
+    for (const auto& away : { std::pair<uint32_t, double> { model, 8 }, { ampMode, Amp::drone } })
+    {
+        Instance a;
+        const uint64_t at = 72000;
+        const auto out = a.render (at + 9600, { P (0, model, 7), P (0, lpgDecay, 0.5), On (0, 60, 1.0), Off (24000, 60), P (at, away.first, away.second),
+                                                P (at + 120, away.first, away.first == model ? 7 : Amp::gate) }, 128, true).l;
+        const double before = rms (out, at - 4800, at), after = rms (out, at + 480, at + 4800);
+        CHECK (before > 0.0);
+        CHECK (after <= 1.25 * before);
+    }
+    // The close is the same at any block size.
+    {
+        const std::vector<Cue> c = { P (0, model, 7), P (0, trigRate, 5), On (0, 60, 1.0), On (500, 64, 0.7), Off (20000, 60), Off (30001, 64) };
+        Instance a, b;
+        const auto big = a.render (96000, c, 128, true).l, small = b.render (96000, c, 37, true).l;
+        bool same = true;
+        for (size_t i = 0; i < big.size(); ++i) same &= big[i] == small[i];
+        CHECK (same);
+    }
+}
 
 // Edges a review found: values queued over a reset, NOTES with a key played again while it rings, the pedal's notes
 // let go before a held key, notes shorter than a block, a slide off a pedal-held voice, a glide set with its note,
@@ -1413,6 +1515,7 @@ int main (int argc, char** argv)
     run ("modulation", testModulation);
     run ("amp", testAmp);
     run ("retrigger", testRetrigger);
+    run ("chiptune", testChiptune);
     run ("edges", testEdges);
     run ("review", testReview);
     run ("third", testThird);

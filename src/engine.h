@@ -453,6 +453,7 @@ private:
         float filterCut = -1.0f, filterReso = -1.0f, panAt = 2.0f, panToL = 0.0f, panToR = 0.0f;
         int silent = 0;
         float vca = 0.0f, panL = 0.70710678f, panR = 0.70710678f;
+        float closing = 1.0f; // a Chiptune note let go: the gate closing after it (1 open)
         float peak = 0.0f;
         float out[block], aux[block];
     };
@@ -1176,6 +1177,20 @@ private:
         vc.plaits.Render (patch, m, vc.out, vc.aux, block);
         vc.random = stmlib::Random::state();
         vc.rendered = true;
+
+        // Chiptune played with a trigger makes its own envelope and bypasses the gate, as on the module, where nothing
+        // ends its note: with T ATT at 0 that envelope never falls. Nexus closes it as the gate closes any other model's
+        // note, from open at each strike of the engine (its trigger's rising edge, four blocks after the key): in Ping it
+        // rings out at LPG DECAY whether the key is held or not; in Gate and Env it stays open while the key is held and
+        // closes once it is let go, towards the level the gate is given (none in Gate, Env 1 in Env). Until a new note
+        // strikes, a voice stays as far closed as it was (it still holds the last note's arpeggio step). A let-go voice
+        // of any model keeps closing, so MODEL or AMP moved off Chiptune and back does not open it again.
+        const bool selfEnveloped = patch.engine == chiptuneModel && m.trigger_patched;
+        if (vc.plaits.struck())
+            vc.closing = 1.0f;
+        else if (! vc.gate || (selfEnveloped && amp == Amp::ping))
+            vc.closing = plaits::NexusVoice::GateFall (vc.closing, amp == Amp::env ? m.level : 0.0f, patch.decay, patch.lpg_colour);
+        if (selfEnveloped) vca *= vc.closing;
 
         // Out / aux, the filter, the VCA, volume and pan.
         const float aux = std::clamp (v (ParamId::auxMix) + mod[Target::aux], 0.0f, 1.0f);

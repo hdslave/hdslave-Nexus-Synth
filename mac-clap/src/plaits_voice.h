@@ -134,6 +134,12 @@ public:
     float lpg_gain() const { return lpg_bypassed_ ? 1.0f : lpg_envelope_.gain(); }
     // Back to silence: the gate shut, the trigger low, the engine reset at the next render.
     void Silence();
+    // One block of the low-pass gate's fall, as LPGEnvelope::ProcessLP moves it with DECAY and COLOR: from `state`
+    // (1 open) towards `level` (a LEVEL input, compressed as Render compresses it). Nexus closes a Chiptune voice
+    // with it, whose engine bypasses the gate while it plays.
+    static float GateFall (float state, float level, float decay, float colour);
+    // The last render's trigger rose: the engine struck (four blocks after the trigger was raised).
+    bool struck() const { return rising_edge_; }
 
 private:
     VirtualAnalogEngine virtual_analog_engine_;
@@ -163,6 +169,7 @@ private:
     int previous_engine_index_ = -1;
     float previous_note_ = 0.0f;
     bool trigger_state_ = false;
+    bool rising_edge_ = false;
     bool lpg_bypassed_ = true;
     bool fresh_ = true; // from silence: the first block's pitch is its own (no average with the last note)
     DecayEnvelope decay_envelope_;
