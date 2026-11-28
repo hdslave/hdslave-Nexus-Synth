@@ -43,3 +43,7 @@ Read `../AGENTS.md`, then `../Workflow/plugins.md` and `../Workflow/host-facts.m
 - **48 kHz engine.** The engine runs at 48 kHz in 12-sample blocks whatever the host rate, and is resampled to the host. Events are stamped in 48 kHz time, so the output doesn't depend on block size.
 - **Parameter ids** follow the original plug-in's control order. The factory presets are its factory patches, value for value.
 - `make sanitize` needs `-fno-sanitize=shift-base`, because Plaits shifts negative numbers.
+
+## Release packaging
+
+Every release ZIP includes the full repository `LICENSE.txt` beside the third-party notices, outside signed plug-in bundles. Preserve both when packaging the plug-in for another project.

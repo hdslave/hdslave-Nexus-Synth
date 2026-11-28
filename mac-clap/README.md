@@ -9,6 +9,10 @@ Separate desktop CLAP build of **hdslave Nexus** for **FL Studio** (2024+) and a
 
 **Velocity to Timbre** is on the **Voice & Filter** tile as **VEL>TIM** in version 0.1.4. Drag the control to set the signed amount. It starts at 0%.
 
+## hdslave plug-in license
+
+You may use these plug-ins to make, perform, record and sell music, including paid client work, without royalties or credit to hdslave. You may share complete, unchanged official releases for free with their notices intact. Selling the software, including it in a paid product or subscription, or distributing a modified version requires prior written permission from hdslave. Third-party components keep their own licenses. [Full plug-in license](../LICENSE.txt).
+
 ## Build & Install (macOS)
 
 Requires Xcode Command Line Tools and CMake 3.20+ (Ninja optional):
