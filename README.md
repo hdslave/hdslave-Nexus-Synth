@@ -8,8 +8,8 @@
     <th width="66%">macOS and Windows · CLAP</th>
   </tr>
   <tr>
-    <td align="center"><a href="docs/nexus-pages.gif"><img src="docs/nexus-pages.gif" alt="Nexus model, voice, and LFO screens running in hdslaveOS"></a></td>
-    <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Nexus macro oscillator, envelopes and modulation pages during playback"></a></td>
+    <td align="center"><a href="docs/nexus-pages.webp"><img src="docs/nexus-pages.webp" alt="Nexus playing the Virtual Analog model and showing the voice and envelope pages"></a></td>
+    <td align="center"><a href="mac-clap/assets/desktop-preview.webp"><img src="mac-clap/assets/desktop-preview.webp" alt="Nexus macro oscillator, envelopes and modulation pages during playback"></a></td>
   </tr>
 </table>
 
@@ -37,9 +37,9 @@ it on a PLUGIN track (SYNTH on Stage). The custom screen uses `melodee.screen/1`
 
 ## Playing it
 
-![Nexus MODEL page with Wavetable selected](docs/nexus-plaits.png)
+[![The output scope responds to notes on the Virtual Analog MODEL page](docs/nexus-model.webp)](docs/nexus-model.webp)
 
-Use Minus and Plus to move through the seven pages. [Watch the screen tour in Melodee](docs/nexus-pages.gif).
+Use Minus and Plus to move through the seven pages. [Watch the screen tour in Melodee](docs/nexus-pages.webp).
 
 | Page | What it holds |
 |---|---|
